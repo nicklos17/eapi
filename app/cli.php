@@ -25,7 +25,7 @@ if($taskType == 'tmp')
  * 注册类自动加载器
  */
 $loader = new \Phalcon\Loader();
-$loader->registerDirs(array($taskPath,ROOT_PATH . '/app/library',ROOT_PATH . '/app/models'));
+$loader->registerDirs(array($taskPath,ROOT_PATH . '/app/library',ROOT_PATH . '/app/models',ROOT_PATH . '/app/logic'));
 $loader->register();
 
 // 创建console应用

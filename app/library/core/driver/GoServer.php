@@ -60,18 +60,7 @@ class GoServer
              return false;
         }
 
-        $args = '';
-        foreach($params as $p) {
-            if(is_array($p)) {
-                $args .= json_encode($p);
-            } else {
-                $args .= $p;
-            }
-
-            $args .= ' ';
-        }
-
-        $this->sendData[$key][$callName] = array($cm[0], $cm[1], $args);
+        $this->sendData[$key][$callName] = array($cm[0], $cm[1], json_encode($params));
         return true;
     }
 

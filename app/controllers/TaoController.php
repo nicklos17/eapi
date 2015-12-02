@@ -13,7 +13,8 @@ class TaoController extends ControllerBase
 	 *
 	 * @param array $dn array(1域名|2简介OR域名,搜索的内容,开头，结尾)
 	 * @param int $type 交易类型 1：一口价 2：竞价 3：竞价(预订竞价) 4：竞价(专题拍卖) 5：竞价(易拍易卖)
-	 * 6:一口价(sedo)
+	 * 6:一口价(sedo) 8:拍卖会
+	 * @param array $page array(开始页，每页多少条)
 	 * @param int $sort 排序参数 1:剩余时间 2：当前价格 3：出价次数
 	 * @param int $regisar 注册商 1:我司 2：非我司
 	 * @param array $price array(开始价格，结束价格)
@@ -23,11 +24,10 @@ class TaoController extends ControllerBase
 	 * @param array $tld array(后缀1，后缀2)
 	 * @param array $endTime array(起始时间，结束时间) 起始时间可以是0 直接传结束时间的unix_time
 	 * @param array $len array(开始长度，结束长度)
-	 * @param array $page array(开始页，每页多少条)
 	 * @return false:查询失败 || array('total','data') total:文档数量,data:二维数组
 	 */
-	public function index($dn = NULL, $type = 0, $sort = NULL, $regisar = NULL, $price = NULL, $bidding = NULL, $exclude = NULL, $class = NULL, 
-		$tld = NULL, $endTime = NULL, $len = NULL, $page = NULL)
+	public function index($dn = NULL, $type = 0, $page = NULL, $sort = NULL, $regisar = NULL, $price = NULL, $bidding = NULL, $exclude = NULL, 
+		$class = NULL, $tld = NULL, $endTime = NULL, $len = NULL)
 	{
 		$es = \core\Config::item('elasticSearch');
 		$client = \Elasticsearch\ClientBuilder::create()->setHosts(array($es['server']))
@@ -158,23 +158,24 @@ class TaoController extends ControllerBase
 			$from = intval($page[0]);
 			$size = intval($page[1]);
 		}
-		
 		$arrayData = array(
+				"from"=>$from,
+				"size"=>$size,
 				"query"=> array(
 						"filtered"=> array(
 								"filter"=> array(
 										"bool"=> array("must"=> $must,"must_not"=> $notMust,"should"=> $should)))));
 		if(3 == $sort)
 		{
-			$arrayData['sort'] = array('t_count'=> 'desc');
+			$arrayData['sort'] = array('t_count'=> 'asc');
 		}
 		elseif(2 == $sort)
 		{
-			$arrayData['sort'] = array('t_now_price'=> 'desc');
+			$arrayData['sort'] = array('t_now_price'=> 'asc');
 		}
 		else
 		{
-			$arrayData['sort'] = array('t_end_time'=> 'desc');
+			$arrayData['sort'] = array('t_end_time'=> 'asc');
 		}
 		
 		$params = ['index'=> $es['index'],'type'=> $es['type'],'body'=> json_encode($arrayData)];

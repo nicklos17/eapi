@@ -8,6 +8,7 @@ define('TEST_ROOT_PATH', __DIR__);
 define('ROOT_PATH', dirname(__DIR__));
 define('LIBRARY_PATH', ROOT_PATH . '/app/library/');
 define('MODELS_PATH', ROOT_PATH . '/app/models/');
+define('LOGIC_PATH', ROOT_PATH . '/app/logic/');
 define('DEBUG', TRUE);
 
 set_include_path(TEST_ROOT_PATH . PATH_SEPARATOR . get_include_path());
@@ -19,7 +20,7 @@ set_include_path(TEST_ROOT_PATH . PATH_SEPARATOR . get_include_path());
 // autoload the dependencies found in composer
 $loader = new \Phalcon\Loader();
 
-$loader->registerDirs(array(TEST_ROOT_PATH,MODELS_PATH,LIBRARY_PATH));
+$loader->registerDirs(array(TEST_ROOT_PATH,MODELS_PATH,LIBRARY_PATH,LOGIC_PATH));
 $loader->registerNamespaces(array('Phalcon'=> TEST_ROOT_PATH . '/incubator-1.2.4/Library/Phalcon'));
 
 $loader->register();

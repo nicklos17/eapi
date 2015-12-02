@@ -231,7 +231,7 @@ class DomainLogic
                 // is hot  写入redis，  promote:uid.domain
                 if ($domainInfo->t_hot) {
                     $redis = \core\driver\Redis::getInstance('default');
-                    $redis->set('promote:' . $domainInfo->t_enameId . $domain, $domainInfo->t_hot);
+                    $redis->setex('promote:' . $domainInfo->t_enameId . $domain, 30 * 60 , $domainInfo->t_hot);
                 }
                 return array('flag' => true, 'msg' => $domainInfo->t_desc);
             }
@@ -263,7 +263,12 @@ class DomainLogic
      */
     public function checkBaseInfo($domainMemo)
     {
-        $words = (new KeywordsModel)->getKeywords();
+        $redis = \core\driver\Redis::getInstance('default');
+        if(!$words = $redis->get('trans:keywords'))
+        {
+            $words = (new KeywordsModel)->getKeywords();
+            $redis->setex('trans:keywords', 86400, $words);
+        }
         foreach($words as $word)
         {
             if(stristr($domainMemo['description'], $word->word) !== false)
@@ -339,13 +344,13 @@ class DomainLogic
             else
                 return array('flag' => '10001', 'msg' => '非我司域名须提交保证金订单id');
         }
-		
+
         $taoModel = new NewTaoModel();
 		if($taoModel->setDoaminInfo($data))
             return TRUE;
         else
         {
-            \core\Logger::write("domain.log", 
+            \core\Logger::write("domain.log",
                 array(__METHOD__,"域名{$domain}发布插入到交易表new_tao失败，用户id:{".$uId."},发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
             return FALSE;
         }
@@ -388,11 +393,9 @@ class DomainLogic
 				return false;
 			}
 			else
-			{
-				$redis = new core\driver\Redis();
-				$key = md5(trim($uId . $domain));
-				$redis->set($key, $whoisInfo['ExpirationDate']);
-				$redis->EXPIRE($key, 120);
+			{	
+				$redis = \core\driver\Redis::getInstance('default');
+				$redis->setex('whois:' . $uId . $domain, 30 * 60 , $whoisInfo['ExpirationDate']);
 				return TRUE;
 			}
 		}
@@ -433,6 +436,7 @@ class DomainLogic
 		}
 		// 判断 域名是 flag 1 我司域名(注册时间,过期时间 和域名状态)   2非我司域名   3 我司非用户域名
 		$res = $this->checkMyDomain($uId, $domain);
+		$isEnameDomain = true;
 		if($res['flag'] == 1)
 		{
 			// 我司域名 判断过期时间 注册时间 域名状态
@@ -440,7 +444,7 @@ class DomainLogic
 			$checkRes = $this->comCheck($domain, $type,$res['msg']);
 			if(!$checkRes['flag'])
 			{
-				return array('succ' => array(),'fail' => array($domain => $checkRes['msg']));
+				return array('succEname' => array(),'succNotInEname' => array(),'fail' => array($domain => $checkRes['msg']));
 			}
 			$tmp = array($domain=>$checkRes['msg']); //域名和简介
 		}
@@ -450,23 +454,35 @@ class DomainLogic
 			$checkRes = $this->nonComCheck($domain);
 			if(!$checkRes['flag'])
 			{
-				return array('succ' => array(),'fail' => array($domain => $checkRes['msg']));
+				return array('succEname' => array(),'succNotInEname' => array(),'fail' => array($domain => $checkRes['msg']));
 			}
 			$tmp = array($domain=>$checkRes['msg']); //域名和简介
+			$isEnameDomain = false;
+		}
+		elseif($res['flag'] == 3)
+		{
+			return array('succEname' => array(),'succNotInEname' => array(),'fail' => array($domain => '域名不属于您,无法发布交易'));
 		}
 		else
 		{
-			return array('succ' => array(),'fail' => array($domain => '域名不属于您,无法发布交易'));
+			return array('succEname' => array(),'succNotInEname' => array(),'fail' => array($domain => $res['msg']));
 		}
 		// 检测域名是否正在交易中
 		$res = $this->isDomainTrans($domain, $type);
 		if($res['flag'])
 		{
-			return array('succ' => array(),'fail' => array($domain => '该域名正在交易中!'));
+			return array('succEname' => array(),'succNotInEname' => array(),'fail' => array($domain => '该域名正在交易中!'));
 		}
 		else
 		{
-			return array('succ' => $tmp,'fail' => array());
+			if($isEnameDomain)
+			{
+				return  array('succEname' => $tmp,'succNotInEname' => array(),'fail' => array()) ;				
+			}
+			else 
+			{
+				return array('succEname' => array(),'succNotInEname' => $tmp,'fail' => array());
+			}
 		}
 	}
 
