@@ -1,0 +1,31 @@
+server {
+    listen 3694;
+    access_log  /var/log/nginx/newrpc_access.log;
+    error_log  /var/log/nginx/newrpc_error.log;
+
+    index index.php index.html index.htm;
+    set $root_path '/var/www/ename/trans/new-trans/public/';
+    root $root_path;
+
+    try_files $uri $uri/ @rewrite;
+
+    location @rewrite {
+        rewrite ^/(.*)$ /index.php?_url=/$1;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_index index.php;
+        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~* ^/(css|img|js|flv|swf|download)/(.+)$ {
+        root $root_path;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
