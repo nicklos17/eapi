@@ -26,48 +26,66 @@ class TaoController extends ControllerBase
 	 * @param array $len array(开始长度，结束长度)
 	 * @return false:查询失败 || array('total','data') total:文档数量,data:二维数组
 	 */
-	public function index($dn = NULL, $type = 0, $page = NULL, $sort = NULL, $regisar = NULL, $price = NULL, $bidding = NULL, $exclude = NULL, 
-		$class = NULL, $tld = NULL, $endTime = NULL, $len = NULL)
+	public function index($data)
 	{
+		$dn = $type = $page = $sort = $regisar = $price = $bidding = $exclude = $class = $tld = $endTime = $len = null;
+		extract($data);
 		$es = \core\Config::item('elasticSearch');
-		$client = \Elasticsearch\ClientBuilder::create()->setHosts(array($es['server']))
-			->build();
+		$client = \Elasticsearch\ClientBuilder::create()->setHosts(array($es['server']))->build();
 		$must = $notMust = $should = array();
 		$from = 0;
 		$size = 10;
-		if(is_array($dn) && 3 == count($dn))
+		if(is_array($dn))
 		{
+			$dn2 = isset($dn[2]) ?$dn[2] :false;
+			$dn3 = isset($dn[3]) ?$dn[3] :false;
 			if($dn[1] && $dn[2])
 			{ // 只搜索域名
-				$should[] = array("query_string"=> array("query"=> "t_body:{$dn[0]}*{$dn[0]}"));
+				$should[] = array("query_string"=> array("query"=> "t_body:{$dn[1]}*{$dn[1]}"));
 			}
 			elseif($dn[1])
 			{
-				$should[] = array("query_string"=> array("query"=> "t_body:{$dn[0]}*"));
+				$should[] = array("query_string"=> array("query"=> "t_body:{$dn[1]}*"));
 			}
 			elseif($dn[2])
 			{
-				$should[] = array("query_string"=> array("query"=> "t_body:*{$dn[0]}"));
+				$should[] = array("query_string"=> array("query"=> "t_body:*{$dn[1]}"));
 			}
-			if(2 == $dn[0])
+			else
 			{
-				if($dn[1] && $dn[2])
+				$should[] = array("query_string"=> array("query"=> "t_body:*{$dn[1]}*"));
+			}
+			if(1 == $dn[0])
+			{
+				if($dn[2] && $dn[3])
 				{ // 搜索域名OR简介
-					$should[] = array("query_string"=> array("query"=> "t_desc:{$dn[0]}*{$dn[0]}"));
-				}
-				elseif($dn[1])
-				{
-					$should[] = array("query_string"=> array("query"=> "t_desc:{$dn[0]}*"));
+					$should[] = array("query_string"=> array("query"=> "t_desc:{$dn[1]}*{$dn[1]}"));
 				}
 				elseif($dn[2])
 				{
-					$should[] = array("query_string"=> array("query"=> "t_desc:*{$dn[0]}"));
+					$should[] = array("query_string"=> array("query"=> "t_desc:{$dn[1]}*"));
+				}
+				elseif($dn[3])
+				{
+					$should[] = array("query_string"=> array("query"=> "t_desc:*{$dn[1]}"));
+				}
+				else
+				{
+					$should[] = array("query_string"=> array("query"=> "t_desc:*{$dn[1]}*"));
 				}
 			}
 		}
 		if($type)
 		{
-			$must[] = array("term"=> array("t_type"=> $type));
+			if(2 == $type)
+			{
+				$must[] = array("terms"=> array("t_type"=> array(2,3,4,5,8)));//竞价
+			}
+			else
+			{
+				$must[] = array("term"=> array("t_type"=> $type));
+			}
+			
 		}
 		if($regisar)
 		{
@@ -109,9 +127,9 @@ class TaoController extends ControllerBase
 				}
 			}
 		}
-		if(is_array($class) && ($class[0] || $class[1]))
+		if(is_array($class) && (isset($class[0]) || isset($class[1])))
 		{
-			if($class[0])
+			if(isset($class[0]) && $class[0])
 			{
 				if(10 == $class[0])
 				{
@@ -123,7 +141,7 @@ class TaoController extends ControllerBase
 				}
 				$must[] = array('term'=> array('t_two_class'=> $class[0]));
 			}
-			if($class[1])
+			if(isset($class[1]) && $class[1])
 			{
 				$must[] = array('term'=> array('t_three_class'=> $class[1]));
 			}
@@ -164,7 +182,14 @@ class TaoController extends ControllerBase
 				"query"=> array(
 						"filtered"=> array(
 								"filter"=> array(
-										"bool"=> array("must"=> $must,"must_not"=> $notMust,"should"=> $should)))));
+										"bool"=> array("must"=> $must,
+												"must_not"=> $notMust,
+												"should"=> $should
+										)
+								)
+						)
+				)
+		);
 		if(3 == $sort)
 		{
 			$arrayData['sort'] = array('t_count'=> 'asc');
@@ -177,9 +202,7 @@ class TaoController extends ControllerBase
 		{
 			$arrayData['sort'] = array('t_end_time'=> 'asc');
 		}
-		
 		$params = ['index'=> $es['index'],'type'=> $es['type'],'body'=> json_encode($arrayData)];
-		
 		$result = $client->search($params);
 		if(isset($result['hits']))
 		{
@@ -193,5 +216,6 @@ class TaoController extends ControllerBase
 				return array('total'=> $total,'data'=> $result['hits']['hits']);
 			}
 		}
+		return array('total'=>0,'data'=>array());
 	}
 }

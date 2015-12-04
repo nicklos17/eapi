@@ -27,7 +27,7 @@ class NewTaoModel extends \core\ModelBase
      *
      */
     public function isTrans($domain) {
-        $this->query("SELECT t_dn FROM new_tao WHERE t_dn = :domain AND t_status IN(1, 2, 3, 9)", array(':domain' => $domain));
+        $this->query("SELECT t_dn FROM {$this->table} WHERE t_dn = :domain AND t_status IN(1, 2, 3, 9)", array(':domain' => $domain));
         return ($this->getRow())? true: false;
     }
 }

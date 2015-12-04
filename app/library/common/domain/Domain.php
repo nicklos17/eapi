@@ -8,7 +8,7 @@ class Domain
 	 * 获取域名分组
 	 *
 	 * @param string $domain
-	 * @return array(class,two,three);
+	 * @return array(class,two,three,长度,域名主体);
 	 */
 	public static function getDomainClass($domain)
 	{
@@ -16,7 +16,7 @@ class Domain
 		$class = self::getClass($domainBody);
 		$two = self::getTwoClass($class, $domainBody);
 		$three = self::getThreeClass($class, $domainBody);
-		return array($class,$two,$three);
+		return array($class,$two,$three,mb_strlen($domainBody,'utf8'),$domainBody);
 	}
 
 	private static function getThreeClass($class, $domainBody)
@@ -70,6 +70,10 @@ class Domain
 		{
 			$two = 7;
 		}
+		elseif (4 == $class)
+		{
+			$two = 13;
+		}
 		elseif(2 == $class)
 		{
 			if(! preg_match("/[a|e|e|i|o|u|v]+/", $domainBody))
@@ -96,6 +100,7 @@ class Domain
 					}
 				}
 			}
+			$two = !$two ? 11 :$two;//如果没有拼配上2级分录记录成字母
 		}
 		elseif(3 == $class)
 		{

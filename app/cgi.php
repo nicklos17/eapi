@@ -25,10 +25,9 @@ try
 	$loader = new Loader();
 	$loader->registerDirs(array(
 			$config['application']['logicsDir'],
-			$config['application']['libDir']),
-			$config['application']['modelsDir']
+			$config['application']['libDir'],
+			$config['application']['modelsDir'])
 		)->register();
-	
 	// Handle the request
 	if(! DEBUG)
 	{
@@ -44,7 +43,7 @@ try
 			});
 	}
 	$controller = isset($_GET['controller'])? $_GET['controller']: false;
-	$action = isset($_GET['action'])? $_GET['action']: false;
+	$action = isset($_GET['method'])? $_GET['method']: false;
 	if(! $controller || ! $action)
 	{
 		echo json_encode(array('flag'=> false,'msg'=> 'must have controller and action'));
@@ -55,7 +54,7 @@ try
 		$params = file_get_contents("php://input");
 		$logic = new $controller();
 		$paramsArr = json_decode($params,true);
-		$result = call_user_func_array(array($logic,$action), $paramsArr);
+		$result = call_user_func_array(array($logic,$action), null ==$paramsArr ? array($params) :$paramsArr);
 		echo json_encode($result);
 	}
 }

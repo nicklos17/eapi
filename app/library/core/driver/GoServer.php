@@ -6,12 +6,12 @@ class GoServer
     private $result;
     private $socket;
     private $config;
-    private $sendData;
+    private $sendData = array();
 
     /**
      * 构造函数创建SCOKET连接
      */
-    function __construct() {
+    public function __construct() {
         $this->config = \core\Config::item('goServer');
         $this->socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
         if(!is_resource($this->socket)) {
@@ -19,13 +19,10 @@ class GoServer
             return;
         }
 
-        if(!socket_set_option($this->socket, SOL_SOCKET, SO_REUSEADDR, 1)) {
+        if(!socket_set_option($this->socket, SOL_SOCKET, SO_REUSEADDR, 1) ||
+            !socket_set_option($this->socket, SOL_SOCKET, SO_RCVTIMEO, array('sec' => $this->config->timeout, 'usec' => 0)) ||
+            !socket_set_option($this->socket, SOL_SOCKET, SO_SNDTIMEO, array('sec' => $this->config->timeout, 'usec' => 0))) {
             throw new \Exception('Unable to set socket option: ' . socket_strerror(socket_last_error()) . PHP_EOL);
-            return;
-        }
-
-        if(!stream_set_timeout($this->socket, $this->config->timeout)) {
-            throw new \Exception('Unable to set socket timeout: ' . socket_strerror(socket_last_error()) . PHP_EOL);
             return;
         }
 
@@ -45,7 +42,7 @@ class GoServer
      *      $socket->call('ename.com', 'Domain->checkMyDomain', array('10000', 'ename.com'));
      *
      */
-    public function call($key, $callName, $params) {
+    public function call($key, $callName, $params = null) {
         if(!in_array($key, $this->sendData)) {
             $this->sendData[$key] = array();
         }
@@ -54,13 +51,13 @@ class GoServer
             $this->sendData[$key][$callName] = array();
         }
 
-        $cm = explode('->', $callName);
+        $cm = explode('::', $callName);
         if(count($cm) != 2) {
              throw new \Exception('call function error: $callName format is falt' . PHP_EOL);
              return false;
         }
 
-        $this->sendData[$key][$callName] = array($cm[0], $cm[1], json_encode($params));
+        $this->sendData[$key][$callName] = $params === null ? '' : json_encode($params);
         return true;
     }
 
@@ -75,21 +72,35 @@ class GoServer
      */
     public function send() {
         if(empty($this->sendData)) {
+            $this->close();
+            throw new \Exception('Unable to get send data' . PHP_EOL);
             return false;
         }
 
         if(!socket_write($this->socket, json_encode($this->sendData))) {
+            $this->sendData = array();
+            $this->close();
             throw new \Exception('Unable to write data to go server：' . socket_strerror(socket_last_error()) . PHP_EOL);
             return false;
         }
 
+        $this->sendData = array();
+
         $res = socket_read($this->socket, $this->config->readLen);
         if(!$res) {
+            $this->close();
             throw new \Exception('Unable to read data from go server：' . socket_strerror(socket_last_error()) . PHP_EOL);
             return false;
         }
 
         return json_decode($res, true);
+    }
+
+    public function close() {
+        if(is_resource($this->socket)) {
+            socket_write($this->socket, 'EOF');
+            socket_close($this->socket);
+        }
     }
 
     public function __destruct() {

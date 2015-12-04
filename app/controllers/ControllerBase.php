@@ -5,11 +5,12 @@ class ControllerBase
 {
 
 	private $di;
+	
 
 	/**
-	 * @var \core\driver\Socket
+	 * @var \core\driver\GoServer
 	 */
-	protected $socket;
+	protected $goSer;
 
 	function __construct($di)
 	{
@@ -19,10 +20,9 @@ class ControllerBase
 	/**
 	 * 获取SOCKET连接
 	 */
-	protected function getSocket()
+	protected function getGoServer()
 	{
 
-		return new \core\driver\Socket();
+		return new \core\driver\GoServer();
 	}
-
 }

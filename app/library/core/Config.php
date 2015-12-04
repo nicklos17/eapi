@@ -18,7 +18,7 @@ class Config
 	{
 		self::$config = $debugs = new \StdClass();
 		// 读取目录下所有文件
-		$files = glob(ROOT_PATH . '/app/config/autoload/*.php');
+		$files = glob(ROOT_PATH . '/app/config/autoload/*');
 		if($debug)
 		{
 			$files[] = ROOT_PATH.'/app/config/debug.php';

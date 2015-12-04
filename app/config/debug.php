@@ -17,11 +17,11 @@ return array(
 		'ip'=>'http://192.168.10.115:800',
 		'user'=>'newtrans',
 	),
-	'socket'=>array(
+	'goServer'=>array(
 		'server'=>'127.0.0.1',
-		'port'=>'2015',
+		'port'=>'9999',
 		'timeout' => '60',
-		'receiveByte' => '1024'
+		'readLen' => '50000'
 	),
 	'elasticSearch'=>array(
 		'server'=>'192.168.10.114:9200',
@@ -31,6 +31,6 @@ return array(
 	'redis'=>array(
 		'server'=>'192.168.10.214',
 		'port'=>'6379',
-                'timeout' => 5
+         'timeout' => 5
 	)
 );

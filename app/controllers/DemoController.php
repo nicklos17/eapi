@@ -28,7 +28,7 @@ class DemoController extends ControllerBase
 		return $dataCenter->getPostData(array('domains'=> 'abc.com,aaaa.com'));
 	}
 
-	public function testAction()
+	public function indexAction()
 	{
 		$logic = new DomainLogic();
 	var_dump($logic->publicDomain(50000, '3399.net', '测试的域名', '1232343435', 1, 200, 3245646567, 2, 2, 0, 283));

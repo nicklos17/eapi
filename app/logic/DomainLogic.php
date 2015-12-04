@@ -32,17 +32,19 @@ class DomainLogic
 		$apiCom = new \core\ApiCom('domaintrade/checkdomaininfo');
 		try
 		{
-			$domainInfo = $apiCom->getPostData(array('domains' => $domain))[0]['msg'];
-			if($domainInfo == '域名信息查找失败') // 非我司 , 2
-            			return array('flag' => 2,'msg' => $domainInfo);
-
-                        if (!isset($domainInfo['EnameId']))     // 不交易
-                                return array('flag' => 4,'msg' => $domainInfo);
-
-			if(isset($domainInfo['EnameId']) && $domainInfo['EnameId'] == $uId)  // 我司，属于用户, flag 1
-				return array('flag' => 1,'msg' => array('expireTime' => $domainInfo['ExpDate'], 'regTime' => $domainInfo['RegDate'], 'domianStatus' => $domainInfo['DomainMyStatus']));
-			else
-				return array('flag' => 3,'in ename, not belong this user');
+                        $domainInfo = $apiCom->getPostData(array('domains' => $domain))[0];
+                        if (!$domainInfo['flag']) { // 域名不可交易
+                            if ($domainInfo['code'] == 322025) // 非我司
+                                return array('flag' => 2, 'msg' => '');
+                            else
+                                return array('flag' => 4, 'msg' => $domainInfo['msg']);
+                        } else {
+                            $msg = $domainInfo['msg'];
+                            if ($msg['EnameId'] == $uId) //  我司属于用户
+                                return array('flag' => 1,'msg' => array('expireTime' => $msg['ExpDate'], 'regTime' => $msg['RegDate'], 'domianStatus' => $msg['DomainMyStatus']));
+                            else   // 我司非用户
+                                return array('flag' => 3, 'msg' => '域名不属于您,无法发布!');
+                        }
 		}
 		catch(Exception $e)
 		{
@@ -146,13 +148,13 @@ class DomainLogic
      */
     public function nonComCheck($domain) {
 
-    	if($this->checkBlackList($domain))
-    	{
-    		return array('flag'=>false,'msg'=>'域名在黑名单里,无法发布交易');
-    	}
     	if($this->nonComCheckTld($domain))
     	{
     		return array('flag'=>false,'msg'=>'非我司域名后缀为:tw,in,cd,us,info,无法发布交易');
+    	}
+    	if($this->checkBlackList($domain))
+    	{
+    		return array('flag'=>false,'msg'=>'域名在黑名单里,无法发布交易');
     	}
     	$newTransResult = new NewTransResult();
     	$domainInfo = $newTransResult->getDescAndHot($domain);
@@ -185,53 +187,33 @@ class DomainLogic
 	{
 			//我司域名  判断过期时间  注册时间  域名状态
 			// 判断是否是 cn 域名   是的 必须注册满7天
-			$isCnDomain = substr_count(strtolower($domain),'.cn') ? TRUE:FALSE;
-			if($isCnDomain)
-			{
-				if($this->checkDomainByRegtime(strtotime($info['regTime']))<604800)
-				{
-					return array('flag' => false, 'msg' => '该域名注册未满7天不能发布交易!');
-				}
-			}
-			//一口价
-			if($type==1)
-			{
-				if($this->checkDomainByDate(strtotime($info['expireTime']))<86400)
-				{
-					return array('flag' => false, 'msg' => '域名将在1天内过期时间,无法发布!');
-				}
-			}
-			//拍卖会
-			elseif($type==7)
-			{
-				if($this->checkDomainByDate($info['expireTime'])<2592000)
-				{
-					return array('flag' => false, 'msg' => '域名将在30天内过期时间,无法发布!');
-				}
-			}
-			else
-			{
-				if($this->checkDomainByDate($info['expireTime'])<1382400)
-				{
-					return array('flag' => false, 'msg' => '域名将在16天内过期时间,无法发布!');
-				}
-			}
-			// 检测我司的域名 状态 获取域名状态对应的msg
-			$status = $info['domianStatus'];
-			$domainStatusConf = \core\Config::item('domainStatus');
-			if($status!=1)
-			{
-				return array('flag' => false, 'msg' => '域名状态为:'.$domainStatusConf[$status].'中,无法发布!');
-			}
-		$newTransResult = new NewTransResult();
-		$domainInfo = $newTransResult->getDescAndHot($domain);
 
+		// 检测我司的域名 状态 获取域名状态对应的msg
+		$status = $info['domianStatus'];
+		$domainStatusConf = \core\Config::item('domainStatus');
+		if($status!=1)
+		{
+			return array('flag' => false, 'msg' => '域名状态为:' . $domainStatusConf[$status] . '中,无法发布!');
+		}
+
+	  if($this->checkCnDomainByRegtime($domain,strtotime($info['regTime'])))
+		{
+					return array('flag' => false, 'msg' => '该域名注册未满7天不能发布交易!');
+		}
+	     //  根据type 判断过期时间
+			$res = $this->checkExpTimeByType($type, strtotime($info['expireTime']));
+			if($res['flag'])
+			{
+				return array('flag' => false, 'msg' => '域名将在' . $res['msg'] . '天内过期,无法发布!');
+			}
+
+            	$newTransResult = new NewTransResult();
 	    // 获取可交易域名的简介和推荐标识
-            if ($domainInfo) {
+            if ($domainInfo = $newTransResult->getDescAndHot($domain)) {
                 // is hot  写入redis，  promote:uid.domain
                 if ($domainInfo->t_hot) {
                     $redis = \core\driver\Redis::getInstance('default');
-                    $redis->setex('promote:' . $domainInfo->t_enameId . $domain, 30 * 60 , $domainInfo->t_hot);
+                    $redis->setex('promote:' . $domainInfo->t_enameId . $domain, 1800 , $domainInfo->t_hot);
                 }
                 return array('flag' => true, 'msg' => $domainInfo->t_desc);
             }
@@ -245,12 +227,11 @@ class DomainLogic
      */
     public function lockDomain($domain) {
         $dataCenter = new \core\DataCenter('domain/setdomainmystatus');
-        $status = 2;
-        $rs = $dataCenter->getPostData(array('domain'=> $domain, 'status'=> $status));
-        if(!$rs['msg']['result'])
+        $rs = $dataCenter->getPostData(array('domain'=> $domain, 'status'=> $status = \core\Config::item('doPubSta')->toArray()['up']));
+        if($rs['msg']['result'] !== true)
         {
             \core\Logger::write("DOMAIN_LOG",
-                array(__METHOD__,"域名 {$domain} 设置状态为 {$status} 失败,msg信息为：{" . $rs['msg']['msg'] . "}"));
+                array(__METHOD__,'域名 ' . $domain . ' 设置状态为 ' . $status . ' 失败,msg信息为：' . $rs['msg']['msg']));
         }
         return $rs['msg']['result'];
     }
@@ -288,7 +269,7 @@ class DomainLogic
 	 */
 	public function freezeMoney($uId, $domain, $money)
     {
-        return (new \finance\Orders($uId))->addOrder($domain, $type = 110 , $money);
+        return (new \finance\Orders($uId))->addOrder($domain, \core\Config::item('finance')->type->bondAuction, $money);
     }
 
 	/**
@@ -300,7 +281,7 @@ class DomainLogic
 	 * $type int [交易类型:1-一口价;2-竞价;3-竞价(预订竞价);4-竞价(专题拍卖);5-竞价(易拍易卖);]
 	 * $price int [价格]
 	 * $endTime int [交易结束时间]
-	 * $moneyType int [是否提现:1-可提现;2-不可提现]
+	 * $moneyType int [是否提现:2-不可提现;3-可提现]
 	 * $isOur int [是否我司域名:1-是;2-否]
 	 * $isHot int [是否用户推荐:0-否;1-是]
      * $orderId int [保证金订单id]
@@ -311,9 +292,10 @@ class DomainLogic
 	{
 		$domainInfo = new \common\Common;
 		$body = $domainInfo->getDomainBody($domain);
+        $domainClass = \common\domain\Domain::getDomainClass($domain);
 		$data = array(
             't_dn' => $domain,
-            't_body' => $body,
+            't_body' => $domainClass[4],
             't_type' => $type,
             't_enameid' => $uId,
 			't_start_price' => $price,
@@ -322,19 +304,19 @@ class DomainLogic
 			't_start_time' => $startTime? $startTime : $_SERVER['REQUEST_TIME'],
             't_end_time' => $endTime,
 			't_tld' => $domainInfo->getTldType($domain),
-            't_len' => strlen($body),
+            't_len' => $domainClass[3],
             't_desc' => $desc,
 			't_money_type' => $moneyType,
             't_ip' => \common\Client::getIp(),
             't_is_our' => $isOur,
 			't_exp_time' => $expireTime,
-            't_hot' => $isHot
+            't_hot' => $isHot,
+            't_class_name' => $domainClass[0],
+            't_two_class' => !$domainClass[1] ? 0 : $domainClass[1],
+            't_three_class' => !$domainClass[2] ? 0 : $domainClass[2]
         );
-		// 获取域名类型
-        $domainClass = \common\domain\Domain::getDomainClass($domain);
-		$data['t_class_name'] = $domainClass[0];
-		$data['t_two_class'] = !$domainClass[1] ? 0 : $domainClass[1];
-		$data['t_three_class'] = !$domainClass[2] ? 0 : $domainClass[2];
+
+
 
 		// 非我司域名，获取保证金订单信息
 		if($isOur !== 1)
@@ -387,13 +369,14 @@ class DomainLogic
 		if($userEmails)
 		{
 			$emails = $this->verifyEmailConv($userEmails);
-			if(isset($whoisInfo['AdministrativeEmail']) &&
-				 !in_array(strtolower($whoisInfo['AdministrativeEmail']), $userEmails))
+
+			if(empty($emails) || empty($whoisInfo['AdministrativeEmail']) ||
+				 !in_array(strtolower($whoisInfo['AdministrativeEmail']), $emails))
 			{
 				return false;
 			}
 			else
-			{	
+			{
 				$redis = \core\driver\Redis::getInstance('default');
 				$redis->setex('whois:' . $uId . $domain, 30 * 60 , $whoisInfo['ExpirationDate']);
 				return TRUE;
@@ -413,17 +396,12 @@ class DomainLogic
 		$newVerifyEmails = array();
 		if($verifyEmails['emailinfo'])
 		{
-			foreach($verifyEmails['emailinfo'] as $verifyEmail)
-			{
-				foreach($verifyEmail as $key => $value)
+			array_walk_recursive($verifyEmails['emailinfo'], function ($val,$key) use (&$newVerifyEmails){
+				if($key=='Email')
 				{
-					if($key == 'Email')
-					{
-						$newVerifyEmails[] = strtolower($value);
-						break;
-					}
+					$newVerifyEmails[]=strtolower($val);
 				}
-			}
+			});
 		}
 		return $newVerifyEmails;
 	}
@@ -436,6 +414,7 @@ class DomainLogic
 		}
 		// 判断 域名是 flag 1 我司域名(注册时间,过期时间 和域名状态)   2非我司域名   3 我司非用户域名
 		$res = $this->checkMyDomain($uId, $domain);
+
 		$isEnameDomain = true;
 		if($res['flag'] == 1)
 		{
@@ -477,9 +456,9 @@ class DomainLogic
 		{
 			if($isEnameDomain)
 			{
-				return  array('succEname' => $tmp,'succNotInEname' => array(),'fail' => array()) ;				
+				return  array('succEname' => $tmp,'succNotInEname' => array(),'fail' => array()) ;
 			}
-			else 
+			else
 			{
 				return array('succEname' => array(),'succNotInEname' => $tmp,'fail' => array());
 			}
@@ -543,5 +522,87 @@ class DomainLogic
 			$enameDomains[] = $k;
 		}
 		return array($enameDomains,$errorDomains);
+	}
+
+	public function checkCnDomainByRegtime($domain,$regtime)
+	{
+		$isCnDomain = substr_count(strtolower($domain),'.cn') ? TRUE:FALSE;
+		if($isCnDomain)
+		{
+		$time = \core\Config::item('cnDomainRegTime');
+		return $_SERVER['REQUEST_TIME'] - $regtime < $time ? true :false;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	public function checkExpTimeByType($type,$expTime)
+	{
+		$expTimeConf = \core\Config::item('expTimeConf')->toArray();
+		$flag = false ;
+		$msg = 0;
+		if ($expTime-$_SERVER['REQUEST_TIME']<$expTimeConf[$type][0])
+		{
+			$flag = true;
+			$msg = $expTimeConf[$type][1];
+		}
+		return   array('flag'=>$flag,'msg'=>$msg);
+	}
+
+	public function getDomainLowestPrice($domain,$price)
+	{
+
+		//(class,two,three,长度,域名主体)
+		list($class,$two,$three,$domainLen,$domainMain) = \common\domain\Domain::getDomainClass($domain);
+		// 获取一口价最低价提示配置
+		$buynowLowest = \core\Config::item('buynow_lowest')->toArray();
+		// 获取域名主体$domainMain 以及 域名后缀 $domainTld
+		$domainTld = \common\Common::getDomainAllTld($domain);
+		// 获取域名所属类型
+		$domainType = $this->getDomainType($class, $domainMain, $domainTld,$domainLen);
+		if(!$domainType)
+		{
+			return false;
+		}
+		// 获取返回该域名最低价。未匹配到返回false
+		if(isset($buynowLowest[$domainTld][$domainLen][$domainType]))
+		{
+			$price = $buynowLowest[$domainTld][$domainLen][$domainType];
+			return $price * 10000;
+		}
+		return false;
+	}
+
+	private function getDomainType($class, $domainMain, $domainTld,$domainLen)
+	{
+		if($class==1)
+		{
+			return 1; // 数字
+		}
+		if($class==2)
+		{
+			if($domainLen == 3 && $domainTld == 'com')
+			{
+				if(preg_match('/[^aeiouv]{3}/', $domainMain)) // 三声母。com
+				{
+					return 4;
+				}
+			}
+			if($domainLen == 2 && $domainTld == 'cn')
+			{
+				if(preg_match('/[^aeiouv]{2}/', $domainMain)) // 两声母。cn
+				{
+					return 4;
+				}
+			}
+			return 2; // 字母
+		}
+		if($class==3)
+		{
+			return 3; // 杂米
+		}
+		return false;
 	}
 }
