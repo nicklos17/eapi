@@ -42,8 +42,8 @@ return array(
 		12=>'注册局安全锁',
 		13=>'安全锁申请',
 		14=>'交易锁定',
-		
-		
+
+
 	),
 	'notInEnameTld'=> array('tw','in','cd','us','info'),
 	// cn域名的注册时间 7天
@@ -62,7 +62,7 @@ return array(
 	'notInEnameExpTime'=>2592000,
 	// 非我司的域名的注册时间要满60天
 	'notInEnameRegTime'=>5184000,
-	
+
 	'buynow_lowest' => 	array(//1。数字,2。字母,3。杂米，4.声母
 		'com'=>array(
 			2=>array(
@@ -118,7 +118,44 @@ return array(
 		)),
     //域名上下架状态值
     'doPubSta'=>array(
-            'down'=>1,//域名下架
-            'up'=>2//域名上架
-        )
+        'down'=>1,//域名下架
+        'up'=>2//域名上架
+    ),
+    'isInquiry'=>array(
+        0=>1,//非询价 一口价
+        1=>8//询价
+    ),
+	//保证金
+	'baozhengjin'=>array(
+        'fabu'=>50,//发布时保证金
+    ),
+	//通知买家卖家
+	'noticeCode'=>array(
+        0=>'T204',//一口价
+        1=>'T203',//竞价
+    ),
+    //交易类型
+    'transType'=>array(
+        'yikoujia' => 1,
+        'jingjia' => 2,
+        'xunjia' => 3,
+        'zhuantipaimai' => 4,
+        'yipaiyimai' => 5
+     ),
+    //是否我司域名
+    'inEname'=>array(
+        'inEname' => 1,
+        'notInEname' => 0
+    ),
+    //违约截止时间
+    'breTime'=>array(
+        'yikoujia'=>array(
+            //一口价，非我司，10天
+            'notInEname'=>864000
+        ),
+    ),
+    'transStaCode'=>array(
+        '买家已确认'=>4,
+        '交易成功'=>14,
+    ),
 );

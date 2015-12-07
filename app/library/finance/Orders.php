@@ -83,9 +83,9 @@ class Orders
 	 */
 	public function cancelOrder($orderId, $enameid = null)
 	{
-		if(! $enameid)
+		if(!$enameid)
 		{
-			$enameid = $this->enameid;
+			$enameid = $this->enameId;
 		}
 		$rs = $this->sendToDC('finance/addorder', array('sellerorderid'=> $orderId,'enameid'=> $enameid));
 		if($rs['flag'] && $rs['msg'])

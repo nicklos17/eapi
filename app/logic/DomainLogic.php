@@ -62,8 +62,8 @@ class DomainLogic
 	{
 		// 根据$type来判断调用isTrans和isInquiryTrans返回交易中的域名
 		// $type只要两种状态值，一种是询价类型一种是非询价类型
-        // 询价
-        if($type != 8)
+        // 询价isInquiry
+        if($type != \core\Config::item('isInquiry')->toArray()[1])
             return $this->isTrans($domain);
 	}
 
@@ -156,7 +156,7 @@ class DomainLogic
     	{
     		return array('flag'=>false,'msg'=>'域名在黑名单里,无法发布交易');
     	}
-    	$newTransResult = new NewTransResult();
+    	$newTransResult = new NewTransResultModel();
     	$domainInfo = $newTransResult->getDescAndHot($domain);
     	if ($domainInfo)
     	{
@@ -207,7 +207,7 @@ class DomainLogic
 				return array('flag' => false, 'msg' => '域名将在' . $res['msg'] . '天内过期,无法发布!');
 			}
 
-            	$newTransResult = new NewTransResult();
+            	$newTransResult = new NewTransResultModel();
 	    // 获取可交易域名的简介和推荐标识
             if ($domainInfo = $newTransResult->getDescAndHot($domain)) {
                 // is hot  写入redis，  promote:uid.domain
@@ -269,7 +269,7 @@ class DomainLogic
 	 */
 	public function freezeMoney($uId, $domain, $money)
     {
-        return (new \finance\Orders($uId))->addOrder($domain, \core\Config::item('finance')->type->bondAuction, $money);
+        return (new \finance\Orders($uId))->addOrder($domain, \core\Config::item('base : finance')->type->bondAuction, $money);
     }
 
 	/**
@@ -316,8 +316,6 @@ class DomainLogic
             't_three_class' => !$domainClass[2] ? 0 : $domainClass[2]
         );
 
-
-
 		// 非我司域名，获取保证金订单信息
 		if($isOur !== 1)
         {
@@ -328,14 +326,14 @@ class DomainLogic
         }
 
         $taoModel = new NewTaoModel();
-		if($taoModel->setDoaminInfo($data))
-            return TRUE;
-        else
+        $taoId = $taoModel->setDoaminInfo($data);
+		if(!$taoId)
         {
             \core\Logger::write("domain.log",
                 array(__METHOD__,"域名{$domain}发布插入到交易表new_tao失败，用户id:{".$uId."},发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
-            return FALSE;
         }
+
+        return $taoId;
 	}
 
 	/**
@@ -526,11 +524,11 @@ class DomainLogic
 
 	public function checkCnDomainByRegtime($domain,$regtime)
 	{
-		$isCnDomain = substr_count(strtolower($domain),'.cn') ? TRUE:FALSE;
+		$isCnDomain = \common\Common::isCnnicDomain($domain);
 		if($isCnDomain)
 		{
-		$time = \core\Config::item('cnDomainRegTime');
-		return $_SERVER['REQUEST_TIME'] - $regtime < $time ? true :false;
+			$time = \core\Config::item('cnDomainRegTime');
+			return $_SERVER['REQUEST_TIME'] - $regtime < $time ? true :false;
 		}
 		else
 		{

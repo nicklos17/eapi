@@ -105,17 +105,20 @@ class PublishController extends ControllerBase
 		$expTime = \core\Config::item('notInEnameExpTime');
 		if($domainLogic->checkDomainByDate(strtotime($whoisInfo['ExpirationDate'])) < $expTime)
 		{
-			return array('flag' => false,'msg' => '域名将在30天内过期时间,无法发布');
+			//'域名将在30天内过期时间,无法发布'
+			return array('flag' => false,'code' =>1002 );
 		}
 		if($domainLogic->checkDomainByRegtime(strtotime($whoisInfo['RegistrationDate'])) < $regTime)
 		{
-			return array('flag' => false,'msg' => '域名注册未满60天，无法发布');
+			//'域名注册未满60天，无法发布'
+			return array('flag' => false,'code' => 1003);
 		}
 		// step2：根据whois返回的数据判断注册时间和到期时间以及注册商判断是否允许发布
 		// 域名必须符合注册满60天，并且到期前30天并且不在Godaddy和ENOM的才允许发布
 		if($domainLogic->checkIsGodaddyOrENOM($whoisInfo['SponsoringRegistrar']))
 		{
-			return array('flag' => false,'msg' => 'godaddy或enom域名暂时无法发布交易');
+			//'godaddy或enom域名暂时无法发布交易'
+			return array('flag' => false,'code' =>1004);
 		}
 		// step3: 根据$uId获取用户认证邮箱
 		// 判断域名whois里面的邮箱是否在用户的认证邮箱中
@@ -124,18 +127,58 @@ class PublishController extends ControllerBase
 		$userEmails = $dc->getData(array('enameId' => $uId))['msg'];
 		if($domainLogic->checkUserEmail($uId, $domain, $whoisInfo, $userEmails))
 		{
-			return array('flag' => TRUE,'msg' => '域名验证通过');
+			//'域名验证通过'
+			return array('flag' => TRUE,'code' =>1001 );
 		}
 		else
 		{
-			return array('flag' => false,'msg' => '域名邮箱验证失败');
+			//'域名邮箱验证失败'
+			return array('flag' => false,'code' =>1005 );
 		}
 		
 		// step4：返回是否允许发布
 	}
 
 	/**
-	 * 一口价发布
+	 * 非法关键词检测
+	 *
+	 * @param s $domains
+	 * 
+	 **/
+	public function checkDesc($domains)
+	{
+		// step2：检测域名简介是否包含关键词
+		// 检测出售天数，价格
+		// 使用go并行处理
+		foreach($domains as $k => $v)
+		{
+			$this->goSer->call($k, 'DomainLogic::checkBaseInfo', array($v));
+		}
+		$res = $this->goSer->send();
+		$succInfoDomains = $failDomains = array();
+		foreach($res as $k => $v)
+		{
+			$v = $v['DomainLogic::checkBaseInfo'];
+			if(isset($v['goError'])){
+				$failDomains[$k] = '系统繁忙,请重试';
+			}else{
+				if($v['flag'] === true)
+				{
+					$succInfoDomains[] = $k;
+				}
+				else
+				{
+					$failDomains[$k] = $v['msg'];
+				}
+			}
+		}
+
+		
+		return array('flag' => TRUE,'msg' => array('succ' => $succInfoDomains,'fail' => $failDomains));
+	}
+	
+	/**
+	 * 交易发布
 	 *
 	 * @param s $uId
 	 *        	int
@@ -150,18 +193,17 @@ class PublishController extends ControllerBase
 	{
 		try
 		{
-
 				$redis = core\driver\Redis::getInstance('default');
-				$server = new core\driver\GoServer();
+				$domains = array_merge($domains['domainEname'], $domains['domainNoEname']);
 				
 				// step2：检测域名简介是否包含关键词
 				// 检测出售天数，价格
 				// 使用go并行处理
 				foreach($domains as $k => $v)
 				{
-					$server->call($k, 'DomainLogic::checkBaseInfo', array($v));
+					$this->goSer->call($k, 'DomainLogic::checkBaseInfo', array($v));
 				}
-				$res = $server->send();
+				$res = $this->goSer->send();
 				$succInfoDomains = $failDomains = array();
 				foreach($res as $k => $v)
 				{
@@ -169,7 +211,7 @@ class PublishController extends ControllerBase
 					if(isset($v['goError'])){
 						$failDomains[$k] = '系统繁忙,请重试';
 					}else{
-						if($v['flag'])
+						if($v['flag'] === true)
 						{
 							$succInfoDomains[] = $k;
 						}
@@ -180,20 +222,18 @@ class PublishController extends ControllerBase
 					}
 				}
 				if(empty($succInfoDomains)){
-					return array('flag' => FALSE,'msg' => array('succ' => array(),'fail' => $failDomains));
+					return array('flag' => TRUE,'msg' => array('succ' => array(),'fail' => $failDomains));
 				}
 				
-				
-				
+								
 				// 检测域名后缀
 				$res = $this->checkDomainTld($succInfoDomains);
 				$succTmpDomains = $res[0];
 				$failDomains = array_merge($failDomains, $res[1], $res[2]);
 				if(empty($succTmpDomains)){
-					return array('flag' => FALSE,'msg' => array('succ' => array(),'fail' => $failDomains));
+					return array('flag' => TRUE,'msg' => array('succ' => array(),'fail' => $failDomains));
 				}
-
-				
+			
 				
 				// step3：存在我司域名调用判断我司域名是否可发布
 				// 非我司域名判断是否$domains里面有非我司域名，有的话从redis中取出
@@ -202,9 +242,9 @@ class PublishController extends ControllerBase
 				// 通过go并行调用返回数据
 				foreach($succTmpDomains as $k => $v)
 				{
-					$server->call($v, 'DomainLogic::checkMyDomain', array($uId,$v));
+					$this->goSer->call($v, 'DomainLogic::checkMyDomain', array($uId,$v));
 				}
-				$res = $server->send();
+				$res = $this->goSer->send();
 				$enameDomains = $notInEnameDomains = array();
 				foreach($res as $k => $v)
 				{
@@ -227,12 +267,12 @@ class PublishController extends ControllerBase
 								$failDomains[$k] = '非我司域名认证失败';
 							}
 						}else{
-							$failDomains[$k] = '该域名不属于您';
+							$failDomains[$k] = $v['msg'];
 						}
 					}
 				}
 				if(empty($enameDomains) && empty($notInEnameDomains)){
-					return array('flag' => FALSE,'msg' => array('succ' => array(),'fail' => $failDomains));
+					return array('flag' => TRUE,'msg' => array('succ' => array(),'fail' => $failDomains));
 				}
 				
 				
@@ -255,7 +295,7 @@ class PublishController extends ControllerBase
 
 				
 				if(empty($succComDomains) && empty($succNonComDomains)){
-					return array('flag' => FALSE,'msg' => array('succ' => array(),'fail' => $failDomains));
+					return array('flag' => TRUE,'msg' => array('succ' => array(),'fail' => $failDomains));
 				}				
 				
 				
@@ -276,7 +316,7 @@ class PublishController extends ControllerBase
 				}
 
 				if(empty($succComTranDomains) && empty($succNonComTranDomains)){
-					return array('flag' => FALSE,'msg' => array('succ' => array(),'fail' => $failDomains));
+					return array('flag' => TRUE,'msg' => array('succ' => array(),'fail' => $failDomains));
 				}
 				
 				
@@ -288,9 +328,9 @@ class PublishController extends ControllerBase
 				if(!empty($succComTranDomains)){
 					foreach($succComTranDomains as $k => $v)
 					{
-						$server->call($k, 'DomainLogic::lockDomain', array($k));
+						$this->goSer->call($k, 'DomainLogic::lockDomain', array($k));
 					}
-					$res = $server->send();
+					$res = $this->goSer->send();
 					foreach($res as $k => $v)
 					{
 						$v = $v['DomainLogic::lockDomain'];
@@ -313,12 +353,11 @@ class PublishController extends ControllerBase
 			
 				//非我司域名冻结保证金
 				if(!empty($succNonComTranDomains)){
-					$bondAuction =  \Core\Config::item('base : finance')->type->bondAuction;
 					foreach($succNonComTranDomains as $k => $v)
 					{
-						$server->call($k, 'DomainLogic::freezeMoney', array($uId, $k, 110));
+						$this->goSer->call($k, 'DomainLogic::freezeMoney', array($uId, $k, \core\Config::item('baozhengjin')->fabu));
 					}
-					$res = $server->send();		
+					$res = $this->goSer->send();		
 					foreach($res as $k => $v)
 					{
 						$v = $v['DomainLogic::freezeMoney'];
@@ -342,7 +381,7 @@ class PublishController extends ControllerBase
 				// 调用go去并行处理我司和非我司的可发布情况返回来		
 				$succDomains = array_merge($succFreezeDomains, $succLockDomains);
 				if(empty($succDomains)){
-					return array('flag' => FALSE,'msg' => array('succ' => array(),'fail' => $failDomains));
+					return array('flag' => TRUE,'msg' => array('succ' => array(),'fail' => $failDomains));
 				}
 
 				// 从redis里面获取域名是否推荐数据进行标识
@@ -374,10 +413,11 @@ class PublishController extends ControllerBase
 					$domains[$k]['endTime'] = strtotime(date('Y-m-d', time()+86400*$domains[$k]['day']).' '.$domains[$k]['hour'].':'.$minute.':00');
 					if($domains[$k]['endTime'] > $domains[$k]['expireTime']){
 						$domains[$k]['endTime'] = $domains[$k]['expireTime'];
+						$domains[$k]['endTimeChange'] = true;
 					}
-					$server->call($k, 'DomainLogic::publicDomain', array($uId, $k, $domains[$k]['description'], $domains[$k]['expireTime'], $type, $domains[$k]['price'], $domains[$k]['endTime'], $cashType, $domains[$k]['isOur'], $domains[$k]['isHot'], $domains[$k]['orderId']));
+					$this->goSer->call($k, 'DomainLogic::publicDomain', array($uId, $k, $domains[$k]['description'], $domains[$k]['expireTime'], $type, $domains[$k]['price'], $domains[$k]['endTime'], $cashType, $domains[$k]['isOur'], $domains[$k]['isHot'], $domains[$k]['orderId']));
 				}
-				$res = $server->send();
+				$res = $this->goSer->send();
 				$succInsertDomains = array();
 				foreach($res as $k => $v)
 				{
@@ -387,7 +427,7 @@ class PublishController extends ControllerBase
 					}else{
 						if($v)
 						{
-							$succInsertDomains[$k] = $v;
+							$succInsertDomains[$k] = isset($domains[$k]['endTimeChange']) ? $domains[$k]['endTime'] : 0;
 						}
 						else
 						{

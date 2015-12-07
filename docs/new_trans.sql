@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      MySQL 5.0                                    */
-/* Created on:     2015-12-1 14:42:39                           */
+/* Created on:     2015-12-7 10:23:49                           */
 /*==============================================================*/
 
 
@@ -16,15 +16,13 @@ drop table if exists new_remind;
 
 drop table if exists new_tao;
 
+drop table if exists new_tao_verify;
+
 drop table if exists new_trans_delay;
 
 drop table if exists new_trans_history;
 
 drop table if exists new_trans_result;
-
-drop table if exists shop;
-
-drop table if exists shop_rate;
 
 /*==============================================================*/
 /* Table: new_booking_info                                      */
@@ -182,7 +180,7 @@ create table new_tao
    t_enameId            int not null,
    t_buyer              int not null default 0,
    t_start_price        int not null default 0,
-   t_nickname           varchar(20) not null default '‘’' comment '一口价购买者随机昵称',
+   t_nickname           varchar(20) not null default '' comment '一口价购买者随机昵称',
    t_now_price          int not null,
    t_agent_price        int not null default 0,
    t_create_time        int not null default 0,
@@ -214,12 +212,118 @@ create table new_tao
             23:公司
             24:网络',
    t_len                tinyint not null default 1,
-   t_desc               varchar(200) not null default '‘’',
+   t_desc               varchar(200) not null default '',
    t_count              int not null default 0,
    t_money_type         tinyint not null comment '2：不可提现
             3：可提现',
    t_ip                 varchar(15) not null,
-   t_buyer_ip           varchar(15) not null default '‘’',
+   t_buyer_ip           varchar(15) not null default '',
+   t_is_our             tinyint not null default 0 comment '1：我司域名
+            2：非我司',
+   t_exp_time           int not null,
+   t_class_name         tinyint not null default 0 comment '1：数字
+            2：字母
+            3：杂米
+            4：中文',
+   t_two_class          tinyint not null default 0 comment '1-4：拼（单拼，双拼，三拼，四拼）
+            6：声母（2声，3声，4声，5声）
+            7：数字
+            8：杂（二杂，三杂）
+            10：CVCV型
+            11：字母
+            12：如果同时是CVCV和双拼
+            13：中文
+            
+            ',
+   t_three_class        int not null default 0 comment '三级分类，具体见GIT文档
+            类似：三数字：AAA, AAB, ABB, ABA',
+   t_seller_order       int not null default 0 comment '非我司域名使用出售使用',
+   t_complate_time      int not null default 0 comment '买家购买时间',
+   t_order_id           int not null default 0 comment '交易成交后的订单ID，一口价就是直接扣钱的订单ID，竞价就是最后过户的订单ID',
+   t_people             tinyint not null default 0 comment '预订竞价该域名的预订人数',
+   t_hot                tinyint not null default 0 comment '用户自己推荐的域名在BBS展示',
+   t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
+   t_seller_end         int not null default 0 comment '方便判断交易违约',
+   t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
+   primary key (t_id)
+)
+type = InnoDB
+DEFAULT CHARACTER SET = utf8
+auto_increment = 80000000;
+
+/*==============================================================*/
+/* Table: new_tao_verify                                        */
+/*==============================================================*/
+create table new_tao_verify
+(
+   t_id                 int not null,
+   t_dn                 varchar(72) not null,
+   t_body               varchar(64) not null comment '域名主体不要后缀的部分，ES搜索用到',
+   t_status             tinyint not null default 1 comment '1：正在交易
+            2：等待双方确认（有人购买，竞价）
+            3：正在过户（有人购买：一口价）
+            4：买家已经确认
+            5：卖家已经确认
+            6：交易失败买家违约
+            7：交易失败卖家违约
+            8：交易流拍
+            9：卖家取消交易
+            10：管理员取消交易
+            14：交易成功
+            15：下架队列',
+   t_type               tinyint not null default 1 comment '1：一口价
+            2：竞价
+            3：竞价(预订竞价)
+            4：竞价(专题拍卖)
+            5：竞价(易拍易卖)',
+   t_topic_type         tinyint not null default 1 comment '专题类型的ID 
+            1：普通交易 
+            2：易拍易卖
+            3：专题拍卖 
+            5：sedo
+            8：拍卖会',
+   t_topic              tinyint not null default 0 comment '专题表主键',
+   t_enameId            int not null,
+   t_buyer              int not null default 0,
+   t_start_price        int not null default 0,
+   t_nickname           varchar(20) not null default '' comment '一口价购买者随机昵称',
+   t_now_price          int not null,
+   t_agent_price        int not null default 0,
+   t_create_time        int not null default 0,
+   t_start_time         int not null default 0,
+   t_end_time           int not null default 0 comment '发布交易计算出来的时间',
+   t_last_time          int not null default 0 comment 'ES根据这个字段更新数据',
+   t_tld                tinyint not null default 1 comment '1:com
+            2:cn
+            3:.com.cn
+            4:net.cn
+            5:org.cn
+            6:省份.cn
+            7:net
+            8:org
+            9:cc
+            10:wang
+            11:top
+            12:biz
+            13:info
+            14:asia
+            15:me
+            16:tv
+            17:tw
+            18:in
+            19:cd
+            20:pw
+            21:me
+            22:中国
+            23:公司
+            24:网络',
+   t_len                tinyint not null default 1,
+   t_desc               varchar(200) not null default '',
+   t_count              int not null default 0,
+   t_money_type         tinyint not null comment '2：不可提现
+            3：可提现',
+   t_ip                 varchar(15) not null,
+   t_buyer_ip           varchar(15) not null default '',
    t_is_our             tinyint not null default 0 comment '1：我司域名
             2：非我司',
    t_exp_time           int not null,
@@ -235,7 +339,7 @@ create table new_tao
             12：如果同时是CVCV和双拼
             
             ',
-   t_three_class        tinyint not null default 0 comment '三级分类，具体见GIT文档
+   t_three_class        int not null default 0 comment '三级分类，具体见GIT文档
             类似：三数字：AAA, AAB, ABB, ABA',
    t_seller_order       int not null default 0 comment '非我司域名使用出售使用',
    t_complate_time      int not null default 0 comment '买家购买时间',
@@ -243,11 +347,15 @@ create table new_tao
    t_people             tinyint not null default 0 comment '预订竞价该域名的预订人数',
    t_hot                tinyint not null default 0 comment '用户自己推荐的域名在BBS展示',
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
+   t_seller_end         int not null default 0 comment '方便判断交易违约',
+   t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
    primary key (t_id)
 )
 type = InnoDB
 DEFAULT CHARACTER SET = utf8
 auto_increment = 80000000;
+
+alter table new_tao_verify comment '表结构同淘域名表,易拍易卖，专题拍卖需要审核的数据表';
 
 /*==============================================================*/
 /* Table: new_trans_delay                                       */
@@ -307,7 +415,7 @@ create table new_trans_history
    t_enameId            int not null,
    t_buyer              int not null default 0,
    t_start_price        int not null default 0,
-   t_nickname           varchar(20) not null default '‘’' comment '一口价购买者随机昵称',
+   t_nickname           varchar(20) not null default '' comment '一口价购买者随机昵称',
    t_now_price          int not null,
    t_agent_price        int not null default 0,
    t_create_time        int not null default 0,
@@ -339,12 +447,12 @@ create table new_trans_history
             23:公司
             24:网络',
    t_len                tinyint not null default 1,
-   t_desc               varchar(200) not null default '‘’',
+   t_desc               varchar(200) not null default '',
    t_count              int not null default 0,
    t_money_type         tinyint not null comment '2：不可提现
             3：可提现',
    t_ip                 varchar(15) not null,
-   t_buyer_ip           varchar(15) not null default '‘’',
+   t_buyer_ip           varchar(15) not null default '',
    t_is_our             tinyint not null default 0 comment '1：我司域名
             2：非我司',
    t_exp_time           int not null,
@@ -360,7 +468,7 @@ create table new_trans_history
             12：如果同时是CVCV和双拼
             
             ',
-   t_three_class        tinyint not null default 0 comment '三级分类，具体见GIT文档
+   t_three_class        int not null default 0 comment '三级分类，具体见GIT文档
             类似：三数字：AAA, AAB, ABB, ABA',
    t_seller_order       int not null default 0 comment '非我司域名使用出售使用',
    t_complate_time      int not null default 0 comment '买家购买时间',
@@ -368,6 +476,8 @@ create table new_trans_history
    t_people             tinyint not null default 0 comment '预订竞价该域名的预订人数',
    t_hot                tinyint not null default 0 comment '用户自己推荐的域名在BBS展示',
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
+   t_seller_end         int not null default 0 comment '方便判断交易违约',
+   t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
    primary key (t_id)
 )
 type = InnoDB
@@ -381,7 +491,7 @@ alter table new_trans_history comment '表结构同淘域名表，这个表中�
 /*==============================================================*/
 create table new_trans_result
 (
-   t_id                 int not null auto_increment,
+   t_id                 int not null,
    t_dn                 varchar(72) not null,
    t_body               varchar(64) not null comment '域名主体不要后缀的部分，ES搜索用到',
    t_status             tinyint not null default 1 comment '1：正在交易
@@ -411,7 +521,7 @@ create table new_trans_result
    t_enameId            int not null,
    t_buyer              int not null default 0,
    t_start_price        int not null default 0,
-   t_nickname           varchar(20) not null default '‘’' comment '一口价购买者随机昵称',
+   t_nickname           varchar(20) not null default '' comment '一口价购买者随机昵称',
    t_now_price          int not null,
    t_agent_price        int not null default 0,
    t_create_time        int not null default 0,
@@ -443,12 +553,12 @@ create table new_trans_result
             23:公司
             24:网络',
    t_len                tinyint not null default 1,
-   t_desc               varchar(200) not null default '‘’',
+   t_desc               varchar(200) not null default '',
    t_count              int not null default 0,
    t_money_type         tinyint not null comment '2：不可提现
             3：可提现',
    t_ip                 varchar(15) not null,
-   t_buyer_ip           varchar(15) not null default '‘’',
+   t_buyer_ip           varchar(15) not null default '',
    t_is_our             tinyint not null default 0 comment '1：我司域名
             2：非我司',
    t_exp_time           int not null,
@@ -464,7 +574,7 @@ create table new_trans_result
             12：如果同时是CVCV和双拼
             
             ',
-   t_three_class        tinyint not null default 0 comment '三级分类，具体见GIT文档
+   t_three_class        int not null default 0 comment '三级分类，具体见GIT文档
             类似：三数字：AAA, AAB, ABB, ABA',
    t_seller_order       int not null default 0 comment '非我司域名使用出售使用',
    t_complate_time      int not null default 0 comment '买家购买时间',
@@ -472,6 +582,8 @@ create table new_trans_result
    t_people             tinyint not null default 0 comment '预订竞价该域名的预订人数',
    t_hot                tinyint not null default 0 comment '用户自己推荐的域名在BBS展示',
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
+   t_seller_end         int not null default 0 comment '方便判断交易违约',
+   t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
    primary key (t_id)
 )
 type = InnoDB
@@ -479,50 +591,4 @@ DEFAULT CHARACTER SET = utf8
 auto_increment = 80000000;
 
 alter table new_trans_result comment '表结构同淘域名表，这个表中只有交易成功的记录，或者交易了等待双方处理的记录，如果记录写入到这张表就从淘域名表删除';
-
-/*==============================================================*/
-/* Table: shop                                                  */
-/*==============================================================*/
-create table shop
-(
-   s_id                 int not null auto_increment,
-   s_enameId            int not null,
-   s_name               varchar(100) not null,
-   s_domain             varchar(144) not null,
-   s_logo               varchar(100) not null,
-   s_desc               varchar(500) not null,
-   s_create_time        int not null,
-   s_hot                tinyint not null default 0 comment '是否推荐店铺1：推荐',
-   s_display            tinyint not null comment '1：选项卡2：同页面',
-   s_code               tinyint not null comment '1:cnzz
-            2:51la',
-   s_code_id            int not null,
-   s_status             tinyint not null comment '1：正常
-            2：用户关闭
-            3：管理员关闭',
-   primary key (s_id)
-);
-
-/*==============================================================*/
-/* Table: shop_rate                                             */
-/*==============================================================*/
-create table shop_rate
-(
-   r_id                 int not null,
-   t_id                 int,
-   r_buyer              int,
-   卖家                   char(10),
-   交易状态                 char(10),
-   买家级别                 char(10),
-   卖家级别                 char(10),
-   域名                   char(10),
-   金额                   char(10),
-   买家评论                 char(10),
-   卖家评论                 char(10),
-   买家评价时间               char(10),
-   卖家评论时间               char(10),
-   创建时间                 char(10),
-   买家昵称                 char(10),
-   primary key (r_id)
-);
 

@@ -16,7 +16,7 @@ class TaoController extends ControllerBase
 	 * 6:一口价(sedo) 8:拍卖会
 	 * @param array $page array(开始页，每页多少条)
 	 * @param int $sort 排序参数 1:剩余时间 2：当前价格 3：出价次数
-	 * @param int $regisar 注册商 1:我司 2：非我司
+	 * @param int $registrar 注册商 1:我司 2：非我司
 	 * @param array $price array(开始价格，结束价格)
 	 * @param array $bidding array(竞价是否有人出价,竞价1元起拍)
 	 * @param array $exclude 必须是2维数组 array(array(内容，开头，结尾),array(内容，开头，结尾))
@@ -28,14 +28,15 @@ class TaoController extends ControllerBase
 	 */
 	public function index($data)
 	{
-		$dn = $type = $page = $sort = $regisar = $price = $bidding = $exclude = $class = $tld = $endTime = $len = null;
+		$dn = $type = $page = $sort = $registrar = $price = $bidding = $exclude = $class = $tld = $endTime = $len = null;
 		extract($data);
 		$es = \core\Config::item('elasticSearch');
 		$client = \Elasticsearch\ClientBuilder::create()->setHosts(array($es['server']))->build();
 		$must = $notMust = $should = array();
 		$from = 0;
 		$size = 10;
-		if(is_array($dn))
+		$dn1 = isset($dn[1]) ?$dn[1] :false;
+		if(is_array($dn) && $dn1)
 		{
 			$dn2 = isset($dn[2]) ?$dn[2] :false;
 			$dn3 = isset($dn[3]) ?$dn[3] :false;
@@ -87,15 +88,15 @@ class TaoController extends ControllerBase
 			}
 			
 		}
-		if($regisar)
+		if($registrar)
 		{
-			$must[] = array("term"=> array("t_is_our"=> $regisar));
+			$must[] = array("term"=> array("t_is_our"=> $registrar));
 		}
 		if(is_array($price) && ($price[0] || $price[1]))
 		{
 			$range = array();
-			intval($price[0]) >= 0? $range['gte'] = $price[0]: '';
-			intval($price[1]) > 0? $range['lte'] = $price[1]: '';
+			intval($price[0]) > 0? $range['gte'] = intval($price[0]): '';
+			intval($price[1]) > 0? $range['lte'] = intval($price[1]): '';
 			$must[] = array("range"=> array("t_now_price"=> $range));
 		}
 		if(is_array($bidding) && 2 == $type && ($bidding[0] || $bidding[1]))
@@ -123,6 +124,10 @@ class TaoController extends ControllerBase
 					if($e)
 					{
 						$notMust[] = array('query_string'=> array("query"=> "t_body:*{$c}"));
+					}
+					if(!$s && !$e)
+					{
+						$notMust[] = array('query_string'=> array("query"=> "t_body:*{$c}*"));
 					}
 				}
 			}
@@ -164,7 +169,8 @@ class TaoController extends ControllerBase
 		}
 		if(is_array($len))
 		{
-			$lenRange = array("range"=> array("t_len"=> array("gte"=> $len[0])));
+			$lenGte = isset($len[0]) && intval($len[0]) > 0 ?intval($len[0]) :1;
+			$lenRange = array("range"=> array("t_len"=> array("gte"=> $lenGte)));
 			if(intval($len[1]))
 			{
 				$lenRange['range']['t_len']['lte'] = $len[1];
@@ -192,7 +198,7 @@ class TaoController extends ControllerBase
 		);
 		if(3 == $sort)
 		{
-			$arrayData['sort'] = array('t_count'=> 'asc');
+			$arrayData['sort'] = array('t_count'=> 'desc');
 		}
 		elseif(2 == $sort)
 		{

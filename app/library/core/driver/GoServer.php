@@ -96,6 +96,32 @@ class GoServer
         return json_decode($res, true);
     }
 
+    public function asyncSend() {
+        if(empty($this->sendData)) {
+            $this->close();
+            throw new \Exception('Unable to get send data' . PHP_EOL);
+            return false;
+        }
+
+        if(!socket_write($this->socket, 'async::' . json_encode($this->sendData))) {
+            $this->sendData = array();
+            $this->close();
+            throw new \Exception('Unable to write data to go server：' . socket_strerror(socket_last_error()) . PHP_EOL);
+            return false;
+        }
+
+        $this->sendData = array();
+
+        $res = socket_read($this->socket, 1);
+        if(!$res) {
+            $this->close();
+            throw new \Exception('Unable to read data from go server：' . socket_strerror(socket_last_error()) . PHP_EOL);
+            return false;
+        }
+
+        return true;
+    }
+
     public function close() {
         if(is_resource($this->socket)) {
             socket_write($this->socket, 'EOF');
