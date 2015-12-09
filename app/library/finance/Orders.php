@@ -3,7 +3,6 @@ namespace finance;
 
 class Orders
 {
-
 	private $enameId;
 
 	function __construct($enameId)
@@ -100,12 +99,12 @@ class Orders
 	 *
 	 * @param int $orderid
 	 * @param int $type
-	 * @param int $sellerid
+	 * @param int $seller 卖家
 	 * @return array
 	 */
 	public function confirmOrder($orderid, $type = '', $seller = '')
 	{
-		$param = array('enameid'=> $this->enameid,'orderid'=> $orderid,'type'=> $type,'seller'=> $seller);
+		$param = array('enameid'=> $this->enameId,'orderid'=> $orderid,'type'=> $type,'seller'=> $seller);
 		$rs = $this->sendToDC('finance/confirmOrder', $param);
 		if($rs['flag'] && $rs['msg'])
 		{

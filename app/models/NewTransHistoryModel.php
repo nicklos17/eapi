@@ -18,7 +18,7 @@ class NewTransHistoryModel extends \core\ModelBase
      */
     public function getDescAndHot($domain) {
         $this->query("SELECT t_desc, t_hot, t_enameId FROM {$this->table} WHERE t_dn = :domain", array('domain' => $domain));
-        return $this->getRow();
+        return $this->affectRow();
     }
 
     /**
@@ -27,6 +27,11 @@ class NewTransHistoryModel extends \core\ModelBase
     * @return int|boolean [lastid or false]
     */
     public function setTransHistory($transInfo) {
-        return $this->insert($transInfo);
+        try {
+            $this->insert($transInfo);
+            return $this->affectRow();
+        } catch (Exception $e) {
+            return false;
+        }
     }
 }

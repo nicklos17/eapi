@@ -31,6 +31,6 @@ class DemoController extends ControllerBase
 	public function indexAction()
 	{
 		$logic = new DomainLogic();
-	var_dump($logic->publicDomain(50000, '3399.net', '测试的域名', '1232343435', 1, 200, 3245646567, 2, 2, 0, 283));
+	var_dump($logic->publicDomain(50000, '3399.net', '测试的域名', '1232343435', 1, 200, 3245646567, 2, 2, 0, '127.0.3.1', 283));
 	}
 }

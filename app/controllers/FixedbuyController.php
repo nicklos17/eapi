@@ -14,22 +14,33 @@ class FixedbuyController extends ControllerBase
      *
      */
     public function getTransInfo($transId) {
-        $res = $this->logic->getTransById($transId);
-        return $res ?: false;
+        $extendRes = array();
+        if ($res = $this->logic->getTransById($transId)) {
+            $extendRes['isIDNDomain'] = $res->t_class_name == 4 ? 1 : 0;
+            $extendRes['idndomain'] = $extendRes['isIDNDomain'] ? (new \common\IDNDomain())->encode($res->t_dn) : '';
+            $extendRes['isbegin'] = $res->t_start_time > time() ? 0 : 1;
+            $extendRes['isfinish'] = $res->t_end_time < time() ? 1 : 0;
+            $extendRes['isSedo'] = $res->t_type == 6 ? 1 :0;
+
+            // 判断是否距离成交时间已经超过3天
+            $now = time();
+            $extendRes['expireFlag'] = ($res->t_status == 14 && intval(($now - $res->t_end_time) / 86400) >= 3 && $now > $res->t_end_time) ? true : false;
+        }
+        return $res ? array_merge(get_object_vars($res), $extendRes) : false;
     }
 
     /**
      * [fixedBuy description]
      * @param  int $uId 买家id
      * @param  bool $isUseNickName 买家是否选择使用昵称
-     * @param  string $buyerIp  买家ip
      * @param  array $transIds  交易id
-     * 
+     * @param string $buyerIp 买家ip
      * @return  array('accessTrans' => $accessTrans, 'denyTrans' => $denyTrans);
      */
     public function fixedBuy($uId, $transIds, $isUseNickName = false, $buyerIp = '') {
         try {
             $goServ = new \core\driver\GoServer();
+            $config = \core\Config::item('fixedBuy');
             // 以下步骤使用goServer并行处理
             //
             // step 调用logic方法，一次判断下面step1,step2,step3返回结果
@@ -41,43 +52,54 @@ class FixedbuyController extends ControllerBase
             $accessTrans = $denyTrans = array();
             foreach ($transIds as $transId => $curId) {
                 $goServ->call($transId, 'TransLogic::checkTransInfo', array($transId, $uId, $curId));
-                $res = $goServ->send()[$transId]['TransLogic::checkTransInfo'];
-
-                if (isset($res['goError']) || !$res['flag']) {
-                    $denyTrans[$transId] = isset($res['goError']) ? $res['goError'] : $res['msg'];
+            }
+            $res = $goServ->send();
+            foreach ($res as $transId => $value) {
+                $rs = $value['TransLogic::checkTransInfo'];
+                if (isset($rs['goError']) || !$rs['flag']) {
+                    $denyTrans[$transId] = isset($rs['goError']) ? $config->systemError : $rs['msg'];
                 } else {
-                    $accessTrans[$transId] = $res['msg'];
+                    $accessTrans[$transId] = $rs['msg'];
                 }
             }
+            if (empty($accessTrans))
+                return array('accessTrans' => $accessTrans, 'denyTrans' => $denyTrans);
             // step4 创建冻结订单
             foreach ($accessTrans as $transId => $info) {
                 $goServ->call($transId, 'TransLogic::freezeMoney', array($info['t_dn'], $uId, $info['t_now_price']));
-                $res = $goServ->send()[$transId]['TransLogic::freezeMoney'];
-
-                if (isset($res['goError']) || !$res) {
-                    $denyTrans[$transId] = isset($res['goError']) ? $res['goError'] : '您账户余额不足一口价标价';
+            }
+            $res = $goServ->send();
+            foreach ($res as $transId => $value) {
+                $rs = $value['TransLogic::freezeMoney'];
+                if (isset($rs['goError']) || !$rs) {
+                    $denyTrans[$transId] = isset($rs['goError']) ? $config->systemError : $config->invalidBalance;
                     unset($accessTrans[$transId]);
                 } else {
                     // 冻结成功，记录财务订单id
-                    $info['financeId'] = $res;
+                    $info['financeId'] = $rs;
                     $accessTrans[$transId] = $info;
                 }
             }
-            
+            if (empty($accessTrans))
+                return array('accessTrans' => $accessTrans, 'denyTrans' => $denyTrans);
+
             // step5 根据交易里的我司和非我司标志更新交易记录状态，我司域名状态直接更新为14，非我司更新为等待卖家确认
             //       同时非我司的交易记录要更新买家违约时间和卖家违约时间
             //       若step5失败，则发起解冻step4里面的冻结订单
+            $buyerIp = $buyerIp ?: \common\Client::getIp();
             foreach ($accessTrans as $transId => $info) {
                 $buyerNick = $isUseNickName ? \common\common::getNickname($uId, $transId) : false;
-
-                $goServ->call($transId, 'TransLogic::updateTransInfo', array($transId, $info['t_type'], $info['t_is_our'], $uId, $buyerNick, $buyerIp));
-                $res = $goServ->send()[$transId]['TransLogic::updateTransInfo'];
-
-                if (isset($res['goError']) || !$res) {  // 更新信息失败，解冻订单
+                $goServ->call($transId, 'TransLogic::updateTransInfo', array($transId, $info['t_type'], $info['t_is_our'], $uId, $buyerNick, $buyerIp, $info['financeId']));
+                $accessTrans[$transId]['buyerNick'] = $buyerNick;
+            }
+            $res = $goServ->send();
+            foreach ($res as $transId => $value) {
+                $rs = $value['TransLogic::updateTransInfo'];
+                $info = $accessTrans[$transId];
+                if (isset($rs['goError']) || !$rs) {  // 更新信息失败，解冻订单
                     $goServ->call($transId, 'TransLogic::unfreezeMoney', array($info['t_enameId'], $info['financeId']));
-                    $goServ->asyncSend()[$transId]['TransLogic::unfreezeMoney'];
                     
-                    $denyTrans[$transId] = '交易记录更新失败';
+                    $denyTrans[$transId] = isset($rs['goError']) ? $config->systemError : $config->updateFailed;
                     unset($accessTrans[$transId]);
                 } else {
                     // step6 我司域名 使用go 异步并行处理下面多个流程
@@ -94,12 +116,11 @@ class FixedbuyController extends ControllerBase
                     //      调用logic里面的asyncDeal处理下面步骤
                     //      1、发送通知邮件、发送站内信、短信通知卖家
                     //      4、复制该交易id的记录到new_trans_result表
-                    $goServ->call($transId, 'TransLogic::asyncDeal', array($info, $buyerNick));
-                    $goServ->asyncSend()[$transId]['TransLogic::asyncDeal'];
+                    $goServ->call($transId, 'TransLogic::asyncDeal', array($info));
                 }
             }
-
-            return array('accessTrans' => $accessTrans, 'denyTrans' => $denyTrans);
+            $goServ->asyncSend();
+            return array('accessTrans' => array_keys($accessTrans), 'denyTrans' => $denyTrans);
         } catch(\Exception $e) {
             \core\Logger::write('FixedbuyController.log', array('出现异常',$e->getMessage(),$e->getFile(),$e->getLine()));
             return false;

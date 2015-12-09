@@ -150,12 +150,27 @@ return array(
     //违约截止时间
     'breTime'=>array(
         'yikoujia'=>array(
-            //一口价，非我司，10天
-            'notInEname'=>864000
+            'notInEname'=>864000//一口价，非我司，10天
         ),
     ),
+    //交易状态
     'transStaCode'=>array(
-        '买家已确认'=>4,
-        '交易成功'=>14,
+        'waitBothCon'=>2,//等待双方确认
+        'buyHasCon'=>4,//买家已确认
+        'sellHasCon'=>5,//卖家已确认
+        'failure'=>8,//交易流失
+        'sellerCancel'=>9,//卖家取消
+        'adminCanceled'=>10,//管理员取消
+        'tranSuc'=>14,//交易成功
+    ),
+
+    //购买确认返回
+    'fixedBuy'=>array(
+        'notExists' => 10001,   // 交易不存在
+        'sameUser' => 10002,   // 买家卖家同一个
+        'invalidPrice' => 10003,   // 无效价格，不一致
+        'invalidBalance' => 10004,   // 余额不足
+        'updateFailed' => 10005,   // 交易记录更新失败
+        'systemError' => 10006,   // 系统错误
     ),
 );

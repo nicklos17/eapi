@@ -6,8 +6,18 @@ class MtohistTask {
      *
      *
      */
-    public function cpActToHistory() {
+    public function cpActToHistoryAction() {
+        $status = \core\Config::item('transStaCode');
+        $status = array($status->failure, $status->sellerCancel);
 
+        $newTaoModel = new NewTaoModel();
+        $res = $newTaoModel->getDatasByStatus($status);
+        
+        $newTransHistoryModel = new NewTransHistoryModel();
+        foreach ($res as $value) {
+            $ins = $newTransHistoryModel->setTransHistory((array)$value);
+            if ($ins === false) echo $value->t_id . PHP_EOL;
+        }
     }
 
     /**
@@ -17,7 +27,11 @@ class MtohistTask {
      *
      *
      */
-    public function delFromTao() {
-
+    public function delFromTaoAction() {
+        $status = \core\Config::item('transStaCode');
+        $status = array($status->tranSuc, $status->buyHasCon, $status->adminCanceled);
+        $newTaoModel = new NewTaoModel();
+        $res = $newTaoModel->delDataByStatus($status);
+        echo "删除{$res}条记录" . PHP_EOL;
     }
 }

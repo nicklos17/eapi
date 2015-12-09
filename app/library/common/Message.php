@@ -471,7 +471,7 @@ class Message
 	}
 	
 	/**
-	 * 卖家违约，消息通知卖家
+	 * 卖家违约，消息通知买家
 	 * @param string $domain
 	 * @param date $nowTime
 	 * @param int $id

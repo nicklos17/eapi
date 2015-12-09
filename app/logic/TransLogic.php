@@ -9,11 +9,7 @@ class TransLogic extends LogicBase {
     public function getTransById($transId) {
     	$taoModel = new NewTaoModel();
     	$res = $taoModel->getTaoRow($transId);
-		if($res && $res->t_status == 1){
-			return $res;
-		}else{
-			return false;
-		}
+        return $res ?: false;
     }
 
     /**
@@ -27,14 +23,14 @@ class TransLogic extends LogicBase {
     	$taoModel = new NewTaoModel();
     	$res = $taoModel->getTaoRow($transId);
     	$msg = '';
-    	if($res){
+    	if($res && $res->t_status == 1){
     		if($res->t_enameId == $buyId){
-    			$msg = '买卖家不能同一个';
+    			$msg = \core\Config::item('fixedBuy')->sameUser;
     		}elseif($res->t_now_price != $curId){
-    			$msg = '价格不一致';
+    			$msg = \core\Config::item('fixedBuy')->invalidPrice;
     		}
     	}else{
-    		$msg = '交易不存在';
+    		$msg = \core\Config::item('fixedBuy')->notExists;
     	}
 
     	return $msg ? array('flag' => false, 'msg' => $msg) : array('flag' => true, 'msg' => $res);
@@ -88,7 +84,7 @@ class TransLogic extends LogicBase {
                 }
                 break;
             /**
-             * 后面还会有竞价的情况 
+             * 后面还会有竞价的情况
              */
             default:
                 return false;
@@ -111,10 +107,10 @@ class TransLogic extends LogicBase {
             case $tType['yikoujia']:
                 switch ($domainType) {
                     case $dType['inEname']:
-                        return $transStaCode['交易成功'];
+                        return $transStaCode['tranSuc'];
                         break;
                     case $dType['notInEname']:
-                        return $transStaCode['买家已确认'];
+                        return $transStaCode['buyHasCon'];
                         break;
                     default:
                         return false;
@@ -122,7 +118,7 @@ class TransLogic extends LogicBase {
                 }
                 break;
             /**
-             * 后面还会有竞价的情况 
+             * 后面还会有竞价的情况
              */
             default:
                 return false;
@@ -143,7 +139,7 @@ class TransLogic extends LogicBase {
      *          根据交易类型和域名类型更新交易状态值
      *
      */
-    public function updateTransInfo($transId, $transType, $domainType, $buyerId, $buyerNick, $buyerIp) {
+    public function updateTransInfo($transId, $transType, $domainType, $buyerId, $buyerNick, $buyerIp, $orderId) {
         // 处理买家和卖家的违约时间可以根据交易类型拆分成不同内部函数处理
         // 处理交易状态也可以根据交易类型拆分成不同的内部函数处理判断
         $newTao = new NewTaoModel();
@@ -155,7 +151,7 @@ class TransLogic extends LogicBase {
         if ($breTime = $this->calBreTime($transType, $domainType)) {
             $update['t_seller_end'] = $breTime;
         }
-        if ($traSta = $this->calBreTime($transType, $domainType)) {
+        if ($traSta = $this->calSta($transType, $domainType)) {
             $update['t_status'] = $traSta;
         }
         $update['t_buyer'] = $buyerId;
@@ -164,6 +160,7 @@ class TransLogic extends LogicBase {
         }
         $update['t_buyer_ip'] = $buyerIp;
         $update['t_complate_time'] = $update['t_last_time'] = $_SERVER['REQUEST_TIME'];
+        $update['t_order_id'] = $orderId;
         
         if ($newTao->updateTrans($update, array('t_id' => $transId))) {
             return true;
@@ -178,85 +175,43 @@ class TransLogic extends LogicBase {
      * @desc 该函数要根据域名信息里面的我司和非我司信息进行分开操作
      *
      */
-    public function asyncDeal($transInfo, $buyerNick) {
+    public function asyncDeal($transInfo) {
         $goServ = new \core\driver\GoServer();
         if ($transInfo['t_is_our'] == 1) {
             // 我司
             // 1、调用接口解锁和Push域名
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::unLockAndPush', array($transInfo['t_dn'], $transInfo['t_enameId'], $transInfo['t_buyer']));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::unLockAndPush', $transInfo['t_enameId'], '调用接口解锁和Push域名', $transInfo['t_id']);
-            }
-            
+            $goServ->call($transInfo['t_id'], 'TransLogic::unLockAndPush', array($transInfo['t_dn'], $transInfo['t_enameId'], $transInfo['t_buyer']));
+
             // 2、调用接口确认冻结财务订单
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::confirmFinance', array($transInfo['financeId'], $transInfo['t_buyer']));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::confirmFinance', $transInfo['t_enameId'], '调用接口确认冻结财务订单', $transInfo['t_id']);
-            }
+            $goServ->call($transInfo['t_id'], 'TransLogic::confirmFinance', array($transInfo['financeId'], $transInfo['t_buyer']));
 
             // 3、将该交易记录插入到new_trans_history表
-            try {
-                unset($transInfo['financeId']);
-                $goServ->call($transInfo['t_id'], 'TransLogic::copyToHistory', array($transInfo, \core\Config::item('trans')->status->success));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::copyToHistory', $transInfo['t_enameId'], '将该交易记录插入到new_trans_history表', $transInfo['t_id']);
-            }
-            
+            unset($transInfo['financeId']);
+            $goServ->call($transInfo['t_id'], 'TransLogic::copyToHistory', array($transInfo, \core\Config::item('transStaCode')->tranSuc));
+
             // 4、写入待评价表
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::addToComment', array($transInfo));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::addToComment', $transInfo['t_enameId'], '写入待评价表', $transInfo['t_id']);
-            }
-            
-            // 5、更新其他用户关注表的交易结束时间，买家信息   todo 买家是否公开nickname
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::updateWatchInfo', array($transInfo['t_id'], $transInfo['t_now_price'], $buyerNick));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::updateWatchInfo', $transInfo['t_enameId'], '更新其他用户关注表的交易结束时间，买家信息', $transInfo['t_id']);
-            }
-            
+            $goServ->call($transInfo['t_id'], 'TransLogic::addToComment', array($transInfo));
+
+            // 5、更新其他用户关注表的交易结束时间，买家信息
+            $goServ->call($transInfo['t_id'], 'TransLogic::updateWatchInfo', array($transInfo['t_id'], $transInfo['t_now_price'], $transInfo['buyerNick']));
+
             // 6、发送通知买家邮件和站内信
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::noticeBuyer', array($transInfo['t_enameId'], $transInfo['t_dn'], $transInfo['t_now_price'], $transInfo['t_id']));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::noticeBuyer', $transInfo['t_enameId'], '发送通知买家邮件和站内信', $transInfo['t_id']);
-            }
-            
+            $goServ->call($transInfo['t_id'], 'TransLogic::noticeBuyer', array($transInfo['t_enameId'], $transInfo['t_dn'], $transInfo['t_now_price'], $transInfo['t_id']));
+
             // 7、根据卖家设置，通知卖家
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::noticeSellerIsOk', array($transInfo['t_enameId'], $transInfo['t_dn'], $transInfo['t_now_price'], $transInfo['t_id']));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::noticeSellerIsOk', $transInfo['t_enameId'], '根据卖家设置，通知卖家', $transInfo['t_id']);
-            }
+            $goServ->call($transInfo['t_id'], 'TransLogic::noticeSellerIsOk', array($transInfo['t_enameId'], $transInfo['t_dn'], $transInfo['t_now_price'], $transInfo['t_id']));
         } else {
             // 非我司
             // 1、发送通知邮件、发送站内信、短信通知卖家
-            try {
-                $goServ->call($transInfo['t_id'], 'TransLogic::noticeSellerAction', array());
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::noticeSellerAction', $transInfo['t_enameId'], '非我司:发送通知邮件、发送站内信、短信通知卖家', $transInfo['t_id']);
-            }
+            $goServ->call($transInfo['t_id'], 'TransLogic::noticeSellerAction', array());
 
             // 4、复制该交易id的记录到new_trans_result表
-            try {
-                unset($transInfo['financeId']);
-                $goServ->call($transInfo['t_id'], 'TransLogic::copyToResult', array($transInfo, \core\Config::item('trans')->status->buyerConfirmed));
-                $goServ->asyncSend();
-            } catch (\Exception $e) {
-                $this->sendMsgNotice('TransLogic::copyToResult', $transInfo['t_enameId'], '非我司:复制该交易id的记录到new_trans_result表', $transInfo['t_id']);
-            }
+            unset($transInfo['financeId']);
+            unset($transInfo['buyerNick']);
+            $goServ->call($transInfo['t_id'], 'TransLogic::copyToResult', array($transInfo, \core\Config::item('transStaCode')->buyHasCon));
         }
+
+        $goServ->asyncSend();
     }
 
     /**
@@ -268,7 +223,7 @@ class TransLogic extends LogicBase {
      */
     public function unLockAndPush($domain, $sellId, $buyId) {
         $rs = array();
-        if($rs['flag'] = new \common\Domain()->PushDomain($sellId, $buyerId, $domain)) {
+        if($rs['flag'] = (new \common\Domain())->PushDomain($sellId, $buyerId, $domain)) {
             $rs['msg'] = '购买成功，域名过户成功';
         } else {
             $rs['msg'] = '购买成功，域名过户失败';
@@ -297,12 +252,12 @@ class TransLogic extends LogicBase {
     public function copyToHistory($transInfo, $status, $finishTime = false) {
         $transInfo['t_status'] = $status;
         $transInfo['t_last_time'] = $transInfo['t_complate_time'] = !$finishTime ? $_SERVER['REQUEST_TIME'] : $finishTime;
-        $historyModel = new NewTransHistorytModel();
+        $historyModel = new NewTransHistoryModel();
         $res = $historyModel->setTransHistory($transInfo);
         if(!$res)
         {
             \core\Logger::write("domain.log",
-                array(__METHOD__,"域名{$domain}插入到交易历史表new_trans_history失败,发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
+                array(__METHOD__,"域名{$transInfo['t_dn']}插入到交易历史表new_trans_history失败,发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
         }
 
         return $res;
@@ -333,6 +288,8 @@ class TransLogic extends LogicBase {
 			$res = $transCustomerShopRate->insert($data);
 			if($res){
 				$flag = true;
+			}else{
+				$this->sendMsgNotice('TransLogic::addToComment', $taoData['t_enameId'], '增加待评论记录', $taoData['t_id']);
 			}
 		}
 
@@ -360,7 +317,7 @@ class TransLogic extends LogicBase {
         if(!$res)
         {
             \core\Logger::write("domain.log",
-                array(__METHOD__,"域名{$domain}更新到域名收藏表表trans_domain_favorite失败,发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
+                array(__METHOD__,"域名{$domain}更新到域名收藏表trans_domain_favorite失败,发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
         }
 
         return $res;
@@ -372,7 +329,10 @@ class TransLogic extends LogicBase {
      *
      */
     public function noticeBuyer($enameId, $domain, $price, $transId){
-        return (new \common\Message)->sendBuyNowBuyer($enameId, $domain, $price, $transId);
+        if($rs = (new \common\Message)->sendBuyNowBuyer($enameId, $domain, $price, $transId))
+            return $rs;
+        else
+            $this->sendMsgNotice('TransLogic::noticeBuyer', $enameId, '发送邮件和站内短信给买家', $transId);
     }
 
     /**
@@ -381,10 +341,8 @@ class TransLogic extends LogicBase {
      *@param $enameid 卖家id
      */
     public function noticeSellerIsOk($enameid, $domain, $price, $transId){
-        $rs = (new \core\DataCenter('User/getMemberSettingByIdentifier'))->getPostData(array('enameid'=> $enameid, 'code'=> \core\Config::item('noticeCode')->toArray()[0]));
-        $sms = FALSE;
-        if(isset($ss['code']) && ($ss['code'] == 100000) && isset($ss['msg']['IsMobile']) && $ss['msg']['IsMobile'])
-            $sms = TRUE;
+
+        $sms = (new \common\Users())->noticeSellerIsOk($enameid, \core\Config::item('noticeCode')->toArray()[0]);
         //通知是否有抛异常
         return (new \common\Message)->sendBuyNowSeller($enameId, $domain, $price, $transId, $sms);
 
@@ -427,5 +385,15 @@ class TransLogic extends LogicBase {
         }
 
         return $res;
+    }
+
+    /**
+    * 根据tid删除数据
+    * return effected_rows
+    */
+    public function delByTid($tid)
+    {
+        $taoModel = new NewTaoModel();
+        return $taoModel->delByTid($tid);
     }
 }

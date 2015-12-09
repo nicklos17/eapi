@@ -289,7 +289,7 @@ class ModelBase
 		// sql语句
 		$sql = "UPDATE {$this->table} SET {$set} {$where}";
 		// 执行更新
-		$this->query($sql, $values, $debug);
+		$this->query($sql, $values, 'stdClass', $debug);
 		// 返回影响行数
 		return $this->affectRow();
 	}

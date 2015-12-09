@@ -1,6 +1,6 @@
 /*==============================================================*/
 /* DBMS name:      MySQL 5.0                                    */
-/* Created on:     2015-12-7 10:23:49                           */
+/* Created on:     2015-12-8 19:56:57                           */
 /*==============================================================*/
 
 
@@ -9,6 +9,12 @@ drop table if exists new_booking_info;
 drop table if exists new_booking_main;
 
 drop table if exists new_expored_domain;
+
+drop table if exists new_in_chat;
+
+drop table if exists new_in_record;
+
+drop table if exists new_inquiry;
 
 drop table if exists new_record;
 
@@ -90,6 +96,171 @@ create table new_expored_domain
 )
 type = ISAM
 DEFAULT CHARACTER SET = utf8;
+
+/*==============================================================*/
+/* Table: new_in_chat                                           */
+/*==============================================================*/
+create table new_in_chat
+(
+   c_id                 int not null auto_increment,
+   r_id                 int,
+   c_user               int not null default 0 comment '记录是买家还是卖家提交的',
+   c_price              int not null,
+   c_create_time        int not null,
+   c_type               tinyint not null default 0 comment '1：买家回复 
+            2：卖家回复',
+   c_memo               varchar(255) not null default '',
+   c_ip                 varchar(15) not null comment '对应c_typs 的用户IP',
+   primary key (c_id)
+);
+
+alter table new_in_chat comment '提交询价记录后买家和卖家还可以来回沟通';
+
+/*==============================================================*/
+/* Table: new_in_record                                         */
+/*==============================================================*/
+create table new_in_record
+(
+   r_id                 int not null,
+   t_id                 int not null,
+   r_buyer              int not null,
+   r_nickname           varchar(20) not null default '',
+   r_create_time        int not null,
+   r_seller_price       int not null default 0 comment '询价价格',
+   r_buyer_price        int default 0,
+   r_status             tinyint not null comment '1：等待处理
+            2：同意
+            3：还价
+            4：拒绝
+            5：转经纪
+            6：买家违约
+            7：卖家违约
+            8：买家延期
+            9：卖家延期（非我司域名可以操作）
+            10：交易成功',
+   r_seller_order       int not null default 0,
+   r_buyer_order        int not null default 0,
+   r_end_time           int not null default 0 comment '延期记录在延期表,根据状态来判断是卖家还是买家截止时间',
+   r_user_type          tinyint not null default 1 comment '1：买家
+            2：卖家',
+   primary key (r_id)
+)
+type = ISAM
+DEFAULT CHARACTER SET = utf8;
+
+alter table new_in_record comment '买家提交询价产生记录';
+
+/*==============================================================*/
+/* Table: new_inquiry                                           */
+/*==============================================================*/
+create table new_inquiry
+(
+   t_id                 int not null auto_increment,
+   t_dn                 varchar(72) not null,
+   t_body               varchar(64) not null comment '域名主体不要后缀的部分，ES搜索用到',
+   t_status             tinyint not null default 1 comment '1：正在交易
+            2：等待双方确认（有人购买，竞价）
+            3：正在过户（有人购买：一口价）
+            4：买家已经确认
+            5：卖家已经确认
+            6：交易失败买家违约
+            7：交易失败卖家违约
+            8：交易流拍
+            9：卖家取消交易
+            10：管理员取消交易
+            14：交易成功
+            15：下架队列',
+   t_type               tinyint not null default 1 comment '1：一口价
+            2：竞价
+            3：竞价(预订竞价)
+            4：竞价(专题拍卖)
+            5：竞价(易拍易卖)
+            6：一口价格(SEDO)
+            8：竞价(拍卖会)
+            9：询价(另一张表)',
+   t_topic_type         tinyint not null default 1 comment '专题类型的ID 
+            1：普通交易 
+            2：易拍易卖
+            3：专题拍卖 
+            5：sedo
+            8：拍卖会',
+   t_topic              tinyint not null default 0 comment '专题表主键',
+   t_enameId            int not null,
+   t_buyer              int not null default 0,
+   t_start_price        int not null default 0,
+   t_nickname           varchar(20) not null default '' comment '一口价购买者随机昵称',
+   t_now_price          int not null,
+   t_agent_price        int not null default 0,
+   t_create_time        int not null default 0,
+   t_start_time         int not null default 0,
+   t_end_time           int not null default 0 comment '发布交易计算出来的时间',
+   t_last_time          int not null default 0 comment 'ES根据这个字段更新数据',
+   t_tld                tinyint not null default 1 comment '1:com
+            2:cn
+            3:.com.cn
+            4:net.cn
+            5:org.cn
+            6:省份.cn
+            7:net
+            8:org
+            9:cc
+            10:wang
+            11:top
+            12:biz
+            13:info
+            14:asia
+            15:me
+            16:tv
+            17:tw
+            18:in
+            19:cd
+            20:pw
+            21:me
+            22:中国
+            23:公司
+            24:网络',
+   t_len                tinyint not null default 1,
+   t_desc               varchar(200) not null default '',
+   t_count              int not null default 0,
+   t_money_type         tinyint not null comment '2：不可提现
+            3：可提现',
+   t_ip                 varchar(15) not null,
+   t_buyer_ip           varchar(15) not null default '',
+   t_is_our             tinyint not null default 0 comment '1：我司域名
+            2：非我司',
+   t_exp_time           int not null,
+   t_class_name         tinyint not null default 0 comment '1：数字
+            2：字母
+            3：杂米
+            4：中文',
+   t_two_class          tinyint not null default 0 comment '1-4：拼（单拼，双拼，三拼，四拼）
+            6：声母（2声，3声，4声，5声）
+            7：数字
+            8：杂（二杂，三杂）
+            10：CVCV型
+            11：字母
+            12：如果同时是CVCV和双拼
+            13：中文
+            
+            ',
+   t_three_class        int not null default 0 comment '三级分类，具体见GIT文档
+            类似：三数字：AAA, AAB, ABB, ABA',
+   t_seller_order       int not null default 0 comment '非我司域名使用出售使用',
+   t_complate_time      int not null default 0 comment '买家购买时间',
+   t_order_id           int not null default 0 comment '交易成交后的订单ID，一口价就是直接扣钱的订单ID，竞价就是最后过户的订单ID',
+   t_people             tinyint not null default 0 comment '预订竞价该域名的预订人数',
+   t_hot                tinyint not null default 0 comment '用户自己推荐的域名在BBS展示',
+   t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
+   t_seller_end         int not null default 0 comment '方便判断交易违约',
+   t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
+   t_out_order          int not null default 0 comment '违约订单ID，买家还是卖家根据状态判断',
+   primary key (t_id)
+)
+type = InnoDB
+DEFAULT CHARACTER SET = utf8
+auto_increment = 80000000;
+
+alter table new_inquiry comment '询价表，和new_tao表结构一样，询价的数据变动率低单独弄一张表';
 
 /*==============================================================*/
 /* Table: new_record                                            */
@@ -245,6 +416,7 @@ create table new_tao
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
    t_seller_end         int not null default 0 comment '方便判断交易违约',
    t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
+   t_out_order          int not null default 0 comment '违约订单ID，买家还是卖家根据状态判断',
    primary key (t_id)
 )
 type = InnoDB
@@ -349,6 +521,7 @@ create table new_tao_verify
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
    t_seller_end         int not null default 0 comment '方便判断交易违约',
    t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
+   t_out_order          int not null default 0 comment '违约订单ID，买家还是卖家根据状态判断',
    primary key (t_id)
 )
 type = InnoDB
@@ -375,6 +548,8 @@ create table new_trans_delay
    d_type               tinyint not null default 0 comment '标示是买家还是卖家申请
             1：卖家
             2：买家',
+   t_type               tinyint not null default 1 comment '1：普通交易
+            2：询价交易 ',
    primary key (d_id)
 )
 type = ISAM
@@ -478,6 +653,7 @@ create table new_trans_history
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
    t_seller_end         int not null default 0 comment '方便判断交易违约',
    t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
+   t_out_order          int not null default 0 comment '违约订单ID，买家还是卖家根据状态判断',
    primary key (t_id)
 )
 type = InnoDB
@@ -584,6 +760,7 @@ create table new_trans_result
    t_admin_hot          tinyint not null default 0 comment '易拍易卖，专题拍卖管理员推荐域名',
    t_seller_end         int not null default 0 comment '方便判断交易违约',
    t_buyer_end          int not null default 0 comment '买家操作截止时间 超过判断违约',
+   t_out_order          int not null default 0 comment '违约订单ID，买家还是卖家根据状态判断',
    primary key (t_id)
 )
 type = InnoDB

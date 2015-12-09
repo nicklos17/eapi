@@ -3,7 +3,7 @@
 class NewTaoModel extends \core\ModelBase
 {
 	protected $table='new_tao';
-	
+
 	function __construct()
 	{
 		parent::__construct();
@@ -30,7 +30,7 @@ class NewTaoModel extends \core\ModelBase
         $this->query("SELECT t_dn FROM {$this->table} WHERE t_dn = :domain AND t_status IN(1, 2, 3, 9)", array(':domain' => $domain));
         return ($this->getRow())? true: false;
     }
-    
+
     /**
      * 获取一条交易记录
      * @params $transId int 交易id
@@ -52,7 +52,7 @@ class NewTaoModel extends \core\ModelBase
     public function updateTrans($update, $where)
     {
         $this->update($update, $where);
-        if (1 === $this->affectRow()) {  
+        if (1 === $this->affectRow()) {
             return true;
         } else {
             return false;
@@ -70,5 +70,57 @@ class NewTaoModel extends \core\ModelBase
     	$sql="SELECT t_id,t_last_time FROM {$this->table} WHERE t_last_time >= :start and t_status!=1 and t_status!=3 ORDER BY t_last_time ASC LIMIT :limit";
    		$this->query($sql,array(':start'=>$startTime,':limit'=>$limit));
    		return $this->getAll();
+    }
+
+    /*
+     *step1 取出已过交易结束时间，类型为竞价的并且有买家id的交易记录
+     */
+    public function getExpiredByType($type, $time)
+    {
+    	$sql="SELECT * FROM {$this->table} WHERE t_type = :type and t_end_time <= :time and t_enameId > 0";
+   		$this->query($sql, array('type'=>$type, 'time'=>$time));
+   		return $this->getAll();
+    }
+
+    /**
+    * 根据交易状态获取交易数据
+    *
+    */
+    public function getDataByStatus($status)
+    {
+        $sql="SELECT * FROM {$this->table} WHERE t_status = :status";
+        $this->query($sql, array(':status'=>$status));
+        return $this->getAll();       
+    }
+
+    /**
+    * 根据tid删除数据
+    * return effected_rows
+    */
+    public function delByTid($tid)
+    {
+        $this->query("DELETE FROM {$this->table} WHERE t_id = :tid limit 1",
+            array(':tid' => $tid)
+        );
+        return $this->affectRow();
+    }
+
+    /**
+     * 删除指定状态数据
+     * @param array $status  状态
+     * @return [type] [description]
+     */
+    public function delDataByStatus($status)
+    {
+        $statusStr = implode(',', $status);
+        $this->query("DELETE FROM {$this->table} WHERE `t_status` IN ($statusStr)");
+        return $this->affectRow();
+    }
+
+    public function getDatasByStatus($status)
+    {
+        $statusStr = implode(',', $status);
+        $this->query("SELECT * FROM {$this->table} WHERE `t_status` IN ({$statusStr})");
+        return $this->getAll();
     }
 }

@@ -23,6 +23,6 @@ class Handler
 	 */
 	private static function writeLog($msg)
 	{
-		file_put_contents("/tmp/new-trans-server.log", var_export($msg,true)."\n",FILE_APPEND);
+		file_put_contents("/tmp/new-trans-server.log", date("Y-m-d H:i:s").'-'.var_export($msg,true)."\n",FILE_APPEND);
 	}
 }

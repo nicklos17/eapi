@@ -16,10 +16,10 @@ class EsTask
 			$params = [
 					'index' => $es['index'],
 					'type' => $es['type'],
-					'id' => $v['t_id']
+					'id' => $v->t_id
 			];
 			$response = $client->delete($params);
-			$startId = $v['t_last_time'];
+			$startId = $v->t_last_time;
 		}
 		file_put_contents($esFile, $startId);
 		echo 'end:'.time()."\n";

@@ -63,7 +63,7 @@ class DomainLogic
 		// 根据$type来判断调用isTrans和isInquiryTrans返回交易中的域名
 		// $type只要两种状态值，一种是询价类型一种是非询价类型
         // 询价isInquiry
-        if($type != \core\Config::item('isInquiry')->toArray()[1])
+        if($type == \core\Config::item('isInquiry')->toArray()[0])
             return $this->isTrans($domain);
 	}
 
@@ -146,7 +146,7 @@ class DomainLogic
      *
      *
      */
-    public function nonComCheck($domain) {
+    public function nonComCheck($uId, $domain) {
 
     	if($this->nonComCheckTld($domain))
     	{
@@ -157,7 +157,7 @@ class DomainLogic
     		return array('flag'=>false,'msg'=>'域名在黑名单里,无法发布交易');
     	}
     	$newTransResult = new NewTransResultModel();
-    	$domainInfo = $newTransResult->getDescAndHot($domain);
+    	$domainInfo = $newTransResult->getDescAndHot($uId, $domain);
     	if ($domainInfo)
     	{
     		// is hot  写入redis，  promote:uid.domain
@@ -176,14 +176,14 @@ class DomainLogic
 
 	/**
 	 * 我司域名根据交易类型检查是否符合发布交易条件，并从历史交易表取出可交易的域名的历史简介和是否推荐标志
-	 *
+	 * @param int $uId 用户id
 	 * @param s $domain 格式:array('abc.com'=>array('expireTime'=>121212,'regTime'=>454545,'domianStatus'=>2))
 	 *
 	 * @param s $type
 	 *        	int
 	 *
 	 */
-	public function comCheck($domain, $type,$info)
+	public function comCheck($uId, $domain, $type,$info)
 	{
 			//我司域名  判断过期时间  注册时间  域名状态
 			// 判断是否是 cn 域名   是的 必须注册满7天
@@ -209,7 +209,7 @@ class DomainLogic
 
             	$newTransResult = new NewTransResultModel();
 	    // 获取可交易域名的简介和推荐标识
-            if ($domainInfo = $newTransResult->getDescAndHot($domain)) {
+            if ($domainInfo = $newTransResult->getDescAndHot($uId, $domain)) {
                 // is hot  写入redis，  promote:uid.domain
                 if ($domainInfo->t_hot) {
                     $redis = \core\driver\Redis::getInstance('default');
@@ -226,14 +226,7 @@ class DomainLogic
      *
      */
     public function lockDomain($domain) {
-        $dataCenter = new \core\DataCenter('domain/setdomainmystatus');
-        $rs = $dataCenter->getPostData(array('domain'=> $domain, 'status'=> $status = \core\Config::item('doPubSta')->toArray()['up']));
-        if($rs['msg']['result'] !== true)
-        {
-            \core\Logger::write("DOMAIN_LOG",
-                array(__METHOD__,'域名 ' . $domain . ' 设置状态为 ' . $status . ' 失败,msg信息为：' . $rs['msg']['msg']));
-        }
-        return $rs['msg']['result'];
+        return (new \common\Domain())->setDomainStatus($domain, \core\Config::item('doPubSta')->toArray()['up']);
     }
 
     /**
@@ -242,7 +235,7 @@ class DomainLogic
      *          该数组每个数据包含提交的域名简介、发布的天数和发布的价格
      *
      */
-    public function checkBaseInfo($domainMemo)
+    public function checkBaseInfo($domainMemo, $type)
     {
         $redis = \core\driver\Redis::getInstance('default');
         if(!$words = $redis->get('trans:keywords'))
@@ -253,8 +246,19 @@ class DomainLogic
         foreach($words as $word)
         {
             if(stristr($domainMemo['description'], $word->word) !== false)
-				return array('flag' => false,'msg' => $word->word);
+				return array('flag' => false,'msg' => '简介含非法词'.$word->word);
         }
+        
+        if($type == \core\Config::item('transType')->yikoujia){
+        	if($domainMemo['day'] > 90){
+        		return array('flag' => false,'msg' => '一口价最多出售90天');
+        	}
+        }else{
+        	if($domainMemo['day'] > 7){
+        		return array('flag' => false,'msg' => '竞价最多出售7天');
+        	}
+        }
+        
 		return array('flag' => true);
     }
 
@@ -284,11 +288,12 @@ class DomainLogic
 	 * $moneyType int [是否提现:2-不可提现;3-可提现]
 	 * $isOur int [是否我司域名:1-是;2-否]
 	 * $isHot int [是否用户推荐:0-否;1-是]
+	 * $ip string [客户端ip]
      * $orderId int [保证金订单id]
 	 * $startTime int [拍卖时间]
 	 */
 	public function publicDomain($uId, $domain, $desc, $expireTime, $type, $price, $endTime, $moneyType,
-		$isOur, $isHot, $orderId = false, $startTime = false)
+		$isOur, $isHot, $ip, $orderId = false, $startTime = false)
 	{
 		$domainInfo = new \common\Common;
 		$body = $domainInfo->getDomainBody($domain);
@@ -307,7 +312,7 @@ class DomainLogic
             't_len' => $domainClass[3],
             't_desc' => $desc,
 			't_money_type' => $moneyType,
-            't_ip' => \common\Client::getIp(),
+            't_ip' => $ip,
             't_is_our' => $isOur,
 			't_exp_time' => $expireTime,
             't_hot' => $isHot,
@@ -418,7 +423,7 @@ class DomainLogic
 		{
 			// 我司域名 判断过期时间 注册时间 域名状态
 			// 判断是否是 cn 域名 是的 必须注册满7天 获取历史简介
-			$checkRes = $this->comCheck($domain, $type,$res['msg']);
+			$checkRes = $this->comCheck($uId, $domain, $type, $res['msg']);
 			if(!$checkRes['flag'])
 			{
 				return array('succEname' => array(),'succNotInEname' => array(),'fail' => array($domain => $checkRes['msg']));
@@ -603,4 +608,106 @@ class DomainLogic
 		}
 		return false;
 	}
+
+	/**
+	* 设置域名解锁状态
+	*
+	*/
+	public function setDomainStatus($domain, $status) {
+		$common = new \common\Domain;
+        return $common->lockDomain($domain, $status);
+    }
+
+    /**
+     * 是否满足其他条件拍卖的流程
+     * @params $domain string 域名
+     * @params  $type int 交易类型
+     *
+     * @result $res int 返回的结果 0-代表不能发布 1-代表可以发布 3-代表不确定是否可发布
+     */
+    public function checkOtherTrans($domain, $type) {
+        return 1;
+    }
+
+    /**
+     * 发布域名到审核表
+     * @params $domain string 域名
+     * @params $type int 交易类型
+     *
+     */
+    public function publicToCheck($uId, $domain, $desc, $expireTime, $type, $price, $endTime, $moneyType,
+		$isOur, $isHot, $ip, $topic, $orderId = false, $startTime = false)
+	{
+		$domainInfo = new \common\Common;
+		$body = $domainInfo->getDomainBody($domain);
+        $domainClass = \common\domain\Domain::getDomainClass($domain);
+		$data = array(
+            't_dn' => $domain,
+            't_body' => $domainClass[4],
+            't_type' => $type,
+			't_topic' => $topic,
+            't_enameid' => $uId,
+			't_start_price' => $price,
+            't_now_price' => $price,
+            't_create_time' => $_SERVER['REQUEST_TIME'],
+			't_start_time' => $startTime? $startTime : $_SERVER['REQUEST_TIME'],
+            't_end_time' => $endTime,
+			't_tld' => $domainInfo->getTldType($domain),
+            't_len' => $domainClass[3],
+            't_desc' => $desc,
+			't_money_type' => $moneyType,
+            't_ip' => $ip,
+            't_is_our' => $isOur,
+			't_exp_time' => $expireTime,
+            't_hot' => $isHot,
+            't_class_name' => $domainClass[0],
+            't_two_class' => !$domainClass[1] ? 0 : $domainClass[1],
+            't_three_class' => !$domainClass[2] ? 0 : $domainClass[2]
+        );
+
+        $verifyModel = new NewTaoVerifyModel();
+        $res = $verifyModel->insertVerify($data);
+		if(!$res)
+        {
+            \core\Logger::write("domain.log",
+                array(__METHOD__,"域名{$domain}发布插入到审核表new_tao_verify失败，用户id:{".$uId."},发布时间:". date('Y-m-d H:i:s', $_SERVER['REQUEST_TIME'])));
+        }
+
+        return $res;
+	}
+
+    /**
+     * 判断专题id是否存在
+     * @params $id int 专题id
+     *
+     * @result bool 返回true或者false，表示该专题id是存在或者不存在
+     *
+     */
+    public function checkTopId($id){
+    	$topicModel = new DomainTopicModel();
+    	$res = $topicModel->getTopic($id);
+		if($res)
+			return true;
+		else
+			return false;
+    }
+
+    /**
+     * 判断该域名是否在询价中
+     * @params $domain string 域名
+     *
+     */
+    public function isDomainEnquiry($domain) {
+
+    }
+
+    /**
+     * 发布询价域名信息到询价表，具体参数沟通一下
+     *
+     *
+     *
+     */
+    public function publicToEnquiry() {
+
+    }
 }
